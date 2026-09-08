@@ -15,7 +15,10 @@ import type {
   ClassCreate,
   ClassUpdate,
   Subject,
-  SubjectCreate,
+  DailyReport,
+  MonthlyReport,
+  StudentReport,
+  ClassReport,
 } from "@/types/class";
 import type {
   AttendanceSession,
@@ -270,6 +273,48 @@ export const api = {
       auth: false,
     }),
   me: () => request<User>("/auth/me"),
+
+  // Students Import
+  importSheetsAnalyze: (url: string) =>
+    request<{
+      spreadsheet_title: string;
+      sheet_name: string;
+      spreadsheet_id: string;
+      headers: string[];
+      total_rows: number;
+      auto_detected: boolean;
+      column_mapping: { k: string | null; v: number | null }[];
+      preview: {
+        row: number;
+        name: string;
+        registration_number: string;
+        email: string;
+        status: string;
+        valid: boolean;
+      }[];
+      summary: { total: number; ready: number; duplicates: number; invalid: number };
+    }>("/api/v1/students/import/google-sheets/analyze", {
+      method: "POST",
+      body: { url },
+      auth: false,
+    }),
+  importSheetsConfirm: (body: {
+    spreadsheet_id: string;
+    sheet_name: string;
+    column_mapping: { name?: string; registration_number?: string; email?: string };
+    headers: string[];
+    rows: { row: number; name: string; registration_number: string; email: string; status: string; valid: boolean }[];
+  }) =>
+    request<{
+      imported: number;
+      skipped_duplicates: number;
+      invalid: number;
+      details: { row: number; reason: string }[];
+    }>("/api/v1/students/import/google-sheets/confirm", {
+      method: "POST",
+      body,
+      auth: false,
+    }),
 
   // Students
   getStudents: (params: Record<string, string | number | undefined> = {}) =>

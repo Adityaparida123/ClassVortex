@@ -9,9 +9,10 @@ import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
 import Icon from "@/components/ui/Icon";
 import StudentForm from "@/components/students/StudentForm";
+import ImportSheetsModal from "@/components/students/ImportSheetsModal";
 import { api, ApiError } from "@/lib/api";
 import { useStudents } from "@/hooks/useStudents";
-import type { Student, StudentCreate, StudentUpdate } from "@/types/student";
+import type { Student, StudentCreate, StudentUpdate, ImportPreview } from "@/types/student";
 import type { ClassItem } from "@/types/class";
 import { staggerIn } from "@/animations/index";
 
@@ -26,9 +27,45 @@ export default function StudentsPage() {
   const [deleting, setDeleting] = useState(false);
   const [pcts, setPcts] = useState<Record<string, number>>({});
   const listRef = useRef<HTMLDivElement>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importState, setImportState] = useState<{
+    url: string;
+    spreadsheetId: string;
+    spreadsheetTitle: string;
+    sheetName: string;
+    autoDetected: boolean;
+    columnMapping: { name: string | null; registration_number: string | null; email: string | null };
+    headers: string[];
+    preview: ImportPreview[];
+    summary: { total: number; ready: number; duplicates: number; invalid: number };
+    loading: boolean;
+    error: string | null;
+    importLoading: boolean;
+    result: { imported: number; skipped_duplicates: number; invalid: number; details: { row: number; reason: string }[] } | null;
+  }>({
+    url: "",
+    spreadsheetId: "",
+    spreadsheetTitle: "",
+    sheetName: "",
+    autoDetected: false,
+    columnMapping: { name: null, registration_number: null, email: null },
+    headers: [],
+    preview: [],
+    summary: { total: 0, ready: 0, duplicates: 0, invalid: 0 },
+    loading: false,
+    error: null,
+    importLoading: false,
+    result: null,
+  });
 
   useEffect(() => {
     api.getClasses({ limit: 100 }).then((r) => setClasses(r.items ?? [])).catch(() => {});
+    setImportState((prev: any) => ({
+      ...prev,
+      columnMapping: { name: null, registration_number: null, email: null },
+      preview: [],
+      summary: { total: 0, ready: 0, duplicates: 0, invalid: 0 },
+    }));
   }, []);
 
   const filtered = useMemo(() => {
@@ -91,9 +128,17 @@ export default function StudentsPage() {
       title="Students"
       subtitle={`${total} students registered`}
       actions={
-        <Button onClick={() => { setEditing(null); setShowForm(true); }}>
-          <Icon name="plus" size={16} /> Add Student
-        </Button>
+        <>
+          <Button onClick={() => { setEditing(null); setShowForm(true); }}>
+            <Icon name="plus" size={16} /> Add Student
+          </Button>
+          <ImportSheetsModal
+            show={showImport}
+            onClose={() => setShowImport(false)}
+            setImportState={setImportState}
+            importState={importState}
+          />
+        </>
       }
       animateKey={`students-${students.length}`}
     >

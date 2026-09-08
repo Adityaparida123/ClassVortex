@@ -31,3 +31,12 @@ export interface StudentUpdate {
   section?: string;
   is_active?: boolean;
 }
+
+export interface ImportPreview {
+  row: number;
+  name: string;
+  registration_number: string;
+  email: string;
+  status: string;
+  valid: boolean;
+}

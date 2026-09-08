@@ -30,7 +30,7 @@ app.add_middleware(
 
 
 from app.routers import auth, users, students, classes, subjects
-from app.routers import attendance, reports, exports, ai
+from app.routers import attendance, reports, exports, ai, sheets_import
 
 app.include_router(auth.router)
 app.include_router(users.router)
@@ -41,6 +41,7 @@ app.include_router(attendance.router)
 app.include_router(reports.router)
 app.include_router(exports.router)
 app.include_router(ai.router)
+app.include_router(sheets_import.router)
 
 
 @app.get("/health", tags=["Health"])

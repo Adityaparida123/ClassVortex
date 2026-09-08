@@ -72,6 +72,12 @@ const paths: Record<string, React.ReactNode> = {
       <path d="M12 3a9 9 0 0 1 9 9" />
     </>
   ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </>
+  ),
 };
 
 interface IconProps {

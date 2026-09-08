@@ -9,6 +9,7 @@ export const DEMO_MODE: boolean =
 export const DEMO_ACCOUNT = {
   displayName: "AttendVortex Demo Teacher",
   email: "demo@attendvortex.local",
+  password: "DemoAttendVortex2026!",
 } as const;
 
 export const NAV_ITEMS = [

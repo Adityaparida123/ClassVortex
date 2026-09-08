@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/constants";
 import Icon from "@/components/ui/Icon";
 import { cx } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function MobileNav() {
   const pathname = usePathname();
+  const { logout } = useAuth(false);
 
   // Show only the core items on mobile to keep the bottom bar compact
   const items = NAV_ITEMS.slice(0, 5);
@@ -36,6 +38,14 @@ export default function MobileNav() {
           </Link>
         );
       })}
+      <button
+        onClick={logout}
+        className="flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[10px] text-[var(--text-faint)] transition-colors hover:text-[var(--danger)]"
+        aria-label="Log out"
+      >
+        <Icon name="logout" size={20} />
+        Logout
+      </button>
     </nav>
   );
 }

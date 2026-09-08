@@ -1,4 +1,5 @@
 import { TOKEN_STORAGE_KEY } from "./constants";
+import { clearAuth } from "./auth";
 import type {
   AuthState,
   LoginResponse,
@@ -31,9 +32,7 @@ import type {
   ClassReport,
 } from "@/types/report";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
-  "http://localhost:8000/api/v1";
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
   status: number;
@@ -50,7 +49,49 @@ function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_STORAGE_KEY);
 }
 
-async function request<T>(
+let redirectingToLogin = false;
+
+function handleUnauthorized(): void {
+  if (typeof window === "undefined") return;
+  clearAuth();
+  if (!redirectingToLogin) {
+    redirectingToLogin = true;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/login");
+    window.setTimeout(() => {
+      redirectingToLogin = false;
+    }, 3000);
+  }
+}
+
+function friendlyMessage(status: number, detail: unknown, fallback: string): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  switch (status) {
+    case 400:
+      return "The request could not be processed. Please check your input.";
+    case 401:
+      return "Your session has expired. Please sign in again.";
+    case 403:
+      return "You don't have permission to perform this action.";
+    case 404:
+      return "The requested item was not found.";
+    case 409:
+      return "This already exists or conflicts with existing data.";
+    case 422:
+      return "Please check the information you provided and try again.";
+    case 500:
+      return "Something went wrong on our side. Please try again.";
+    default:
+      return fallback || "Request failed.";
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function requestRaw<T>(
   path: string,
   options: {
     method?: string;
@@ -60,7 +101,13 @@ async function request<T>(
   } = {}
 ): Promise<T> {
   const { method = "GET", body, auth = true, headers = {} } = options;
-  const url = `${BASE_URL}${path}`;
+
+  if (!BASE_URL) {
+    throw new ApiError(
+      "API URL is not configured. Set NEXT_PUBLIC_API_URL to point to the backend.",
+      0
+    );
+  }
 
   const init: RequestInit = {
     method,
@@ -71,10 +118,7 @@ async function request<T>(
   };
 
   if (auth) {
-    const token = getToken();
-    if (token) {
-      (init.headers as Record<string, string>).Authorization = `Bearer ${token}`;
-    }
+    Object.assign(init.headers as Record<string, string>, authHeaders());
   }
 
   if (body !== undefined) {
@@ -83,7 +127,7 @@ async function request<T>(
 
   let res: Response;
   try {
-    res = await fetch(url, init);
+    res = await fetch(`${BASE_URL}${path}`, init);
   } catch {
     throw new ApiError("Network error. Please check your connection.", 0);
   }
@@ -99,26 +143,97 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    const message =
-      (data?.detail as string) ??
-      ((data?.data as Record<string, unknown>)?.message as string) ??
-      res.statusText ??
-      "Request failed";
+    if (res.status === 401 && auth) handleUnauthorized();
+    const detail = (data as { detail?: unknown } | null)?.detail;
+    const fallbackMsg = res.statusText || "Request failed";
+    const message = friendlyMessage(res.status, detail, fallbackMsg);
+    console.error(`API ${method} ${path} failed`, {
+      status: res.status,
+      detail,
+      data,
+    });
     throw new ApiError(message, res.status, data);
   }
 
-  if (data && typeof data === "object" && "data" in data) {
-    return data.data as T;
-  }
   return data as T;
 }
 
-async function download(path: string): Promise<Blob> {
-  const token = getToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+async function request<T>(
+  path: string,
+  options: {
+    method?: string;
+    body?: unknown;
+    auth?: boolean;
+    headers?: Record<string, string>;
+  } = {}
+): Promise<T> {
+  const body = await requestRaw<{ success?: boolean; data?: T }>(path, options);
+  if (body && typeof body === "object" && "data" in body) {
+    return body.data as T;
+  }
+  return body as T;
+}
+
+interface ListEnvelope<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+async function requestList<T>(
+  path: string,
+  options: {
+    method?: string;
+    body?: unknown;
+    auth?: boolean;
+    headers?: Record<string, string>;
+  } = {}
+): Promise<ListEnvelope<T>> {
+  const body = await requestRaw<{
+    data?: T[];
+    pagination?: { total?: number; page?: number; limit?: number };
+  }>(path, options);
+  const pagination = body?.pagination ?? {};
+  return {
+    items: body?.data ?? [],
+    total: pagination.total ?? 0,
+    page: pagination.page ?? 1,
+    limit: pagination.limit ?? 0,
+  };
+}
+
+function queryString(params: Record<string, string | number | undefined>): string {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== "") q.set(k, String(v));
   });
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
+async function download(path: string): Promise<Blob | null> {
+  if (!BASE_URL) {
+    throw new ApiError(
+      "API URL is not configured. Set NEXT_PUBLIC_API_URL to point to the backend.",
+      0
+    );
+  }
+  const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders() });
+  const contentType = res.headers.get("content-type") || "";
+
   if (!res.ok) {
+    if (res.status === 401) handleUnauthorized();
+    const message = friendlyMessage(res.status, undefined, res.statusText || "Export failed");
+    console.error(`API GET ${path} failed`, { status: res.status });
+    throw new ApiError(message, res.status);
+  }
+  if (contentType.includes("application/json")) {
+    const j = (await res.json().catch(() => null)) as {
+      data?: { message?: string };
+    } | null;
+    const msg = j?.data?.message;
+    if (msg) return null;
     throw new ApiError("Export failed", res.status);
   }
   return res.blob();
@@ -135,16 +250,8 @@ export const api = {
   me: () => request<User>("/auth/me"),
 
   // Students
-  getStudents: (params: Record<string, string | number | undefined> = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") q.set(k, String(v));
-    });
-    const qs = q.toString();
-    return request<{ items: Student[]; total: number; page: number; limit: number }>(
-      `/students${qs ? `?${qs}` : ""}`
-    );
-  },
+  getStudents: (params: Record<string, string | number | undefined> = {}) =>
+    requestList<Student>(`/students${queryString(params)}`),
   getStudent: (id: string) => request<Student>(`/students/${id}`),
   createStudent: (data: StudentCreate) =>
     request<Student>("/students", { method: "POST", body: data }),
@@ -154,16 +261,8 @@ export const api = {
     request<{ message: string }>(`/students/${id}`, { method: "DELETE" }),
 
   // Classes
-  getClasses: (params: Record<string, string | number | undefined> = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") q.set(k, String(v));
-    });
-    const qs = q.toString();
-    return request<{ items: ClassItem[]; total: number; page: number; limit: number }>(
-      `/classes${qs ? `?${qs}` : ""}`
-    );
-  },
+  getClasses: (params: Record<string, string | number | undefined> = {}) =>
+    requestList<ClassItem>(`/classes${queryString(params)}`),
   getClass: (id: string) => request<ClassItem>(`/classes/${id}`),
   createClass: (data: ClassCreate) =>
     request<ClassItem>("/classes", { method: "POST", body: data }),
@@ -173,16 +272,8 @@ export const api = {
     request<{ message: string }>(`/classes/${id}`, { method: "DELETE" }),
 
   // Subjects
-  getSubjects: (params: Record<string, string | number | undefined> = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") q.set(k, String(v));
-    });
-    const qs = q.toString();
-    return request<{ items: Subject[]; total: number; page: number; limit: number }>(
-      `/subjects${qs ? `?${qs}` : ""}`
-    );
-  },
+  getSubjects: (params: Record<string, string | number | undefined> = {}) =>
+    requestList<Subject>(`/subjects${queryString(params)}`),
   getSubject: (id: string) => request<Subject>(`/subjects/${id}`),
   createSubject: (data: SubjectCreate) =>
     request<Subject>("/subjects", { method: "POST", body: data }),
@@ -197,19 +288,8 @@ export const api = {
       method: "POST",
       body: data,
     }),
-  getSessions: (params: Record<string, string | number | undefined> = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== "") q.set(k, String(v));
-    });
-    const qs = q.toString();
-    return request<{
-      items: AttendanceSession[];
-      total: number;
-      page: number;
-      limit: number;
-    }>(`/attendance/sessions${qs ? `?${qs}` : ""}`);
-  },
+  getSessions: (params: Record<string, string | number | undefined> = {}) =>
+    requestList<AttendanceSession>(`/attendance/sessions${queryString(params)}`),
   getSession: (id: string) =>
     request<{ session: AttendanceSession; records: AttendanceRecord[] }>(
       `/attendance/sessions/${id}`
@@ -248,25 +328,17 @@ export const api = {
     request<ClassReport>(`/reports/class/${classId}`),
 
   // Exports
-  exportCSV: async (params: { class_id?: string; from_date?: string; to_date?: string } = {}) => {
-    const q = new URLSearchParams();
-    if (params.class_id) q.set("class_id", params.class_id);
-    if (params.from_date) q.set("from_date", params.from_date);
-    if (params.to_date) q.set("to_date", params.to_date);
-    const qs = q.toString();
-    const blob = await download(`/exports/attendance/csv${qs ? `?${qs}` : ""}`);
-    return triggerDownload(blob, "attendance.csv");
+  exportCSV: async (params: { class_id?: string; from_date?: string; to_date?: string } = {}): Promise<boolean> => {
+    const blob = await download(`/exports/attendance/csv${queryString(params)}`);
+    if (!blob) return false;
+    triggerDownload(blob, "attendance.csv");
+    return true;
   },
-  exportExcel: async (params: { class_id?: string; from_date?: string; to_date?: string } = {}) => {
-    const q = new URLSearchParams();
-    if (params.class_id) q.set("class_id", params.class_id);
-    if (params.from_date) q.set("from_date", params.from_date);
-    if (params.to_date) q.set("to_date", params.to_date);
-    const qs = q.toString();
-    const blob = await download(
-      `/exports/attendance/excel${qs ? `?${qs}` : ""}`
-    );
-    return triggerDownload(blob, "attendance.xlsx");
+  exportExcel: async (params: { class_id?: string; from_date?: string; to_date?: string } = {}): Promise<boolean> => {
+    const blob = await download(`/exports/attendance/excel${queryString(params)}`);
+    if (!blob) return false;
+    triggerDownload(blob, "attendance.xlsx");
+    return true;
   },
 
   // AI

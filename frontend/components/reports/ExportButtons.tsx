@@ -25,10 +25,12 @@ export default function ExportButtons({ classId, fromDate, toDate }: ExportButto
     setBusy(type);
     setError(null);
     try {
-      if (type === "csv") {
-        await api.exportCSV(params);
-      } else {
-        await api.exportExcel(params);
+      const exported =
+        type === "csv"
+          ? await api.exportCSV(params)
+          : await api.exportExcel(params);
+      if (!exported) {
+        setError("No data to export for the selected range.");
       }
     } catch (e) {
       const err = e as ApiError;

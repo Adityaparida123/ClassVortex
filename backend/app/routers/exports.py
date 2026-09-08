@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
+import os
 from typing import Optional
 from app.services import export_service
 from app.core.dependencies import get_current_user
@@ -21,7 +22,7 @@ async def export_csv(
         return {"success": True, "data": {"message": "No data to export"}}
     return FileResponse(
         path=filepath,
-        filename=filepath.split("/")[-1],
+        filename=os.path.basename(filepath),
         media_type="text/csv",
     )
 
@@ -40,6 +41,6 @@ async def export_excel(
         return {"success": True, "data": {"message": "No data to export"}}
     return FileResponse(
         path=filepath,
-        filename=filepath.split("/")[-1],
+        filename=os.path.basename(filepath),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )

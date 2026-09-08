@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import * as authStore from "@/lib/auth";
+import { TOKEN_STORAGE_KEY } from "@/lib/constants";
 import type { User } from "@/types/auth";
 
 interface AuthContextValue {
@@ -49,20 +50,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const res = await api.login(email, password);
+      const token = res.access_token;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      }
       let userInfo: User;
       try {
         userInfo = await api.me();
       } catch {
         userInfo = {
           id: "",
-          name: "",
+          name: email.split("@")[0],
           email,
           role: "teacher",
           is_active: true,
         };
       }
-      authStore.saveAuth(res.access_token, userInfo);
-      setToken(res.access_token);
+      authStore.saveAuth(token, userInfo);
+      setToken(token);
       setUser(userInfo);
       router.push("/dashboard");
     },

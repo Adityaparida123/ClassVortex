@@ -269,6 +269,11 @@ export const api = {
       body: { email, password },
       auth: false,
     }),
+  demoLogin: () =>
+    request<LoginResponse>("/auth/demo", {
+      method: "POST",
+      auth: false,
+    }),
   me: () => request<User>("/auth/me"),
 
   // Students Import

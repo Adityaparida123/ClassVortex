@@ -19,6 +19,7 @@ interface AuthContextValue {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginDemo: () => Promise<void>;
   register: (name: string, email: string, password: string, role?: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -29,6 +30,7 @@ const AuthContext = createContext<AuthContextValue>({
   token: null,
   loading: true,
   login: async () => {},
+  loginDemo: async () => {},
   register: async () => {},
   logout: () => {},
   isAuthenticated: false,
@@ -84,6 +86,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [login]
   );
 
+  const loginDemo = useCallback(async () => {
+    const res = await api.demoLogin();
+    const token = res.access_token;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    }
+    let userInfo: User;
+    try {
+      userInfo = await api.me();
+    } catch {
+      userInfo = {
+        id: "",
+        name: "Demo Teacher",
+        email: "demo@attendvortex.local",
+        role: "teacher",
+        is_active: true,
+      };
+    }
+    authStore.saveAuth(token, userInfo);
+    setToken(token);
+    setUser(userInfo);
+    router.push("/dashboard");
+  }, [router]);
+
   const logout = useCallback(() => {
     authStore.clearAuth();
     setToken(null);
@@ -93,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, login, register, logout, isAuthenticated: !!token }}
+      value={{ user, token, loading, login, loginDemo, register, logout, isAuthenticated: !!token }}
     >
       {children}
     </AuthContext.Provider>

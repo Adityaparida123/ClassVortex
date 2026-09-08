@@ -4,13 +4,13 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
-import { TAGLINE } from "@/lib/constants";
+import { TAGLINE, DEMO_MODE, DEMO_ACCOUNT } from "@/lib/constants";
 import { animateIn, continuousRotate } from "@/animations/index";
 import { prefersReducedMotion } from "@/lib/utils";
 import Icon from "@/components/ui/Icon";
 
 export default function LoginPage() {
-  const { login, register, isAuthenticated } = useAuth(false);
+  const { login, loginDemo, register, isAuthenticated } = useAuth(false);
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "register">("signin");
   const [name, setName] = useState("");
@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [role, setRole] = useState("teacher");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
 
   const logoRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -42,6 +44,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setDemoError(null);
     setLoading(true);
     try {
       if (mode === "register") {
@@ -57,8 +60,23 @@ export default function LoginPage() {
     }
   };
 
+  const handleDemoLogin = async () => {
+    setDemoError(null);
+    setError(null);
+    setDemoLoading(true);
+    try {
+      await loginDemo();
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setDemoError(apiErr.message || "Demo login unavailable. Please try again later.");
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   const toggleMode = () => {
     setError(null);
+    setDemoError(null);
     setMode((prev) => (prev === "signin" ? "register" : "signin"));
   };
 
@@ -101,7 +119,7 @@ export default function LoginPage() {
           <div className="mb-6 flex rounded-xl bg-[rgba(255,255,255,0.04)] p-1">
             <button
               type="button"
-              onClick={() => { setMode("signin"); setError(null); }}
+              onClick={() => { setMode("signin"); setError(null); setDemoError(null); }}
               className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
                 mode === "signin"
                   ? "bg-[var(--primary)] text-white shadow-md"
@@ -112,7 +130,7 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => { setMode("register"); setError(null); }}
+              onClick={() => { setMode("register"); setError(null); setDemoError(null); }}
               className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
                 mode === "register"
                   ? "bg-[var(--primary)] text-white shadow-md"
@@ -227,7 +245,70 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <p className="mt-4 text-center text-xs text-[var(--text-faint)]">
+          {DEMO_MODE && mode === "signin" && (
+            <>
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-[var(--border)]" />
+                <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--text-faint)]">
+                  or try demo
+                </span>
+                <div className="h-px flex-1 bg-[var(--border)]" />
+              </div>
+
+              {demoError && (
+                <div
+                  className="mb-4 rounded-xl border border-[rgba(251,113,133,0.25)] bg-[rgba(251,113,133,0.08)] px-4 py-2.5 text-xs text-[var(--danger)]"
+                  role="alert"
+                >
+                  {demoError}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-[var(--border)] bg-[rgba(124,106,255,0.05)] p-4">
+                <h3 className="text-sm font-semibold text-[var(--text)]">
+                  Want to explore AttendVortex?
+                </h3>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  Try the demo account with sample attendance data.
+                </p>
+
+                <div className="mt-3 flex items-center gap-2.5 rounded-lg bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-2)] text-[13px] font-bold text-white shadow-sm">
+                    D
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-medium text-[var(--text)]">
+                      {DEMO_ACCOUNT.displayName}
+                    </div>
+                    <div className="truncate text-[11px] text-[var(--text-faint)]">
+                      {DEMO_ACCOUNT.email}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDemoLogin}
+                  className="btn-ghost mt-3.5 w-full"
+                  disabled={demoLoading || loading}
+                >
+                  {demoLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--primary)]/30 border-t-[var(--primary)]" />
+                      Entering demo...
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="text-sm leading-none">✨</span>
+                      Continue as Demo
+                    </span>
+                  )}
+                </button>
+              </div>
+            </>
+          )}
+
+          <p className="mt-5 text-center text-xs text-[var(--text-faint)]">
             Attendance · Intelligence · In Motion
           </p>
         </form>

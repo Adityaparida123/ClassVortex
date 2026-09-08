@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3"
 
+    DEMO_MODE: bool = False
+    DEMO_TEACHER_EMAIL: str = "demo@attendvortex.local"
+
     @property
     def cors_origins_list(self) -> List[str]:
         origins = []

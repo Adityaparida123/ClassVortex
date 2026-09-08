@@ -1,6 +1,16 @@
 export const APP_NAME = "AttendVortex";
 export const TAGLINE = "Attendance. Intelligence. In Motion.";
 
+export const DEMO_MODE: boolean =
+  typeof process !== "undefined" &&
+  process.env &&
+  process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+export const DEMO_ACCOUNT = {
+  displayName: "AttendVortex Demo Teacher",
+  email: "demo@attendvortex.local",
+} as const;
+
 export const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "layout" },
   { href: "/attendance", label: "Attendance", icon: "check" },

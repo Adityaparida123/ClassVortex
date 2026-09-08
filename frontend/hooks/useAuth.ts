@@ -9,7 +9,7 @@ import { useAuthContext } from "@/context/AuthContext";
  * Returns `{ user, loading, isAuthenticated }`.
  */
 export function useAuth(requireAuth = true) {
-  const { user, token, loading, login, register, logout, isAuthenticated } =
+  const { user, token, loading, login, loginDemo, register, logout, isAuthenticated } =
     useAuthContext();
   const router = useRouter();
 
@@ -19,5 +19,5 @@ export function useAuth(requireAuth = true) {
     }
   }, [loading, requireAuth, isAuthenticated, router]);
 
-  return { user, token, loading, login, register, logout, isAuthenticated };
+  return { user, token, loading, login, loginDemo, register, logout, isAuthenticated };
 }

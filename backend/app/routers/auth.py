@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.services import auth_service
 from app.core.dependencies import get_current_user
+from app.config import settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
@@ -27,6 +28,23 @@ async def login(request: LoginRequest):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
+        )
+    token = await auth_service.create_user_token(user)
+    return {"success": True, "data": token}
+
+
+@router.post("/demo", response_model=dict)
+async def demo_login():
+    if not settings.DEMO_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo mode is not enabled on this server.",
+        )
+    user = await auth_service.authenticate_demo_user()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo account is not available. Please contact the administrator.",
         )
     token = await auth_service.create_user_token(user)
     return {"success": True, "data": token}

@@ -3,6 +3,7 @@ from bson import ObjectId
 from app.database import get_database
 from app.core.security import hash_password, verify_password, create_access_token
 from app.utils.helpers import serialize_id
+from app.config import settings
 
 
 async def register_user(name: str, email: str, password: str, role: str = "teacher") -> dict:
@@ -57,3 +58,15 @@ async def get_all_users(page: int = 1, limit: int = 20) -> tuple:
         users.append(serialize_id(user))
     total = await db.users.count_documents({})
     return users, total
+
+
+async def authenticate_demo_user() -> dict:
+    if not settings.DEMO_MODE:
+        return None
+    db = get_database()
+    user = await db.users.find_one({"email": settings.DEMO_TEACHER_EMAIL})
+    if not user:
+        return None
+    if not user.get("is_active", False):
+        return None
+    return user

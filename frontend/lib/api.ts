@@ -15,10 +15,7 @@ import type {
   ClassCreate,
   ClassUpdate,
   Subject,
-  DailyReport,
-  MonthlyReport,
-  StudentReport,
-  ClassReport,
+  SubjectCreate,
 } from "@/types/class";
 import type {
   AttendanceSession,

@@ -14,6 +14,7 @@ import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
 import EmptyState from "@/components/ui/EmptyState";
 import { todayISO } from "@/lib/utils";
+import type { StudentSummaryRow } from "@/types/report";
 interface DashboardData {
   totalStudents: number;
   totalClasses: number;
@@ -66,7 +67,7 @@ export default function DashboardPage() {
           const summaries = monthly.student_summaries ?? [];
           if (summaries.length) {
             overallPct =
-              summaries.reduce((s, x) => s + (x.attendance_percentage || 0), 0) /
+              summaries.reduce((s: number, x: StudentSummaryRow) => s + (x.attendance_percentage || 0), 0) /
               summaries.length;
           }
         } catch {

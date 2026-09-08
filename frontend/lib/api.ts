@@ -32,7 +32,23 @@ import type {
   ClassReport,
 } from "@/types/report";
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+function resolveBaseUrl(): string {
+  const envUrl = (
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    (typeof process !== "undefined" && process.env?.VITE_API_URL) ||
+    ""
+  ).trim();
+
+  if (!envUrl) return "";
+  const cleaned = envUrl.replace(/\/+$/, "");
+  if (!cleaned.endsWith("/api/v1")) {
+    return `${cleaned}/api/v1`;
+  }
+  return cleaned;
+}
+
+const BASE_URL = resolveBaseUrl();
 
 export class ApiError extends Error {
   status: number;
@@ -241,6 +257,12 @@ async function download(path: string): Promise<Blob | null> {
 
 export const api = {
   // Auth
+  register: (name: string, email: string, password: string, role = "teacher") =>
+    request<User>("/auth/register", {
+      method: "POST",
+      body: { name, email, password, role },
+      auth: false,
+    }),
   login: (email: string, password: string) =>
     request<LoginResponse>("/auth/login", {
       method: "POST",

@@ -90,17 +90,28 @@ In the Render dashboard under **Environment**:
 
 ---
 
-## D. Vercel Frontend Setup
+## D. Frontend Deployment Setup
 
+### Option 1: Vercel (Recommended for Next.js)
 1. **Import Project into Vercel**:
    - Go to [Vercel Dashboard](https://vercel.com) and click **Add New...** → **Project**.
-   - Select your repository.
-
+   - Select your repository (`ClassVortex`).
 2. **Configure Project Settings**:
    - **Framework Preset**: `Next.js`
-   - **Root Directory**: Click **Edit** and set to `frontend`
-   - **Build Command**: `npm run build` (or default Next.js build)
-   - **Output Directory**: Next.js will automatically handle static exports.
+   - **Root Directory**: `frontend`
+   - **Build Command**: `npm run build`
+   - **Environment Variable**: `NEXT_PUBLIC_API_URL=https://<your-backend-app>.onrender.com/api/v1`
+
+### Option 2: Render (Next.js Web Service)
+1. In the [Render Dashboard](https://dashboard.render.com), click **New +** → **Web Service**.
+2. Connect your GitHub repository.
+3. Configure settings:
+   - **Name**: `attendvortex-frontend`
+   - **Root Directory**: `frontend`
+   - **Runtime**: `Node`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm run start`
+   - **Environment Variable**: `NEXT_PUBLIC_API_URL=https://<your-backend-app>.onrender.com/api/v1`
 
 ---
 

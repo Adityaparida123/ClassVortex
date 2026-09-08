@@ -136,3 +136,56 @@ export function continuousRotate(
     ease: "linear" as const,
   });
 }
+
+/**
+ * Subtle hover lift + shadow for cards. Only meaningful on devices
+ * that support hover (fine pointer). Safe to ignore elsewhere.
+ */
+export function hoverLift(
+  el: AnimTarget,
+  opts: { on: boolean; distance?: number; duration?: number } = { on: true }
+): void {
+  if (!el || shouldReduce()) return;
+  const { on, distance = 6, duration = 220 } = opts;
+  animate(el, {
+    translateY: on ? [-distance, 0][0] ?? 0 : 0,
+    scale: on ? 1.015 : 1,
+    duration,
+    ease: on ? ("outQuad" as const) : ("outCubic" as const),
+    ...(on ? { boxShadow: "0 16px 32px -16px rgba(0,0,0,0.5)" } : {}),
+  });
+}
+
+/**
+ * Quick success "flash" for confirmations (marking, saving).
+ * A short scale + fade pulse.
+ */
+export function successPop(
+  el: AnimTarget,
+  opts: { color?: string; duration?: number } = {}
+): void {
+  if (!el || shouldReduce()) return;
+  const { color = "rgba(52,211,153,0.18)", duration = 500 } = opts;
+  animate(el, {
+    backgroundColor: [color, "rgba(255,255,255,0.02)"],
+    scale: [1, 1.02, 1],
+    duration,
+    ease: "outQuad" as const,
+  });
+}
+
+/**
+ * Nudge an element to draw attention (e.g. when a value drops).
+ */
+export function attentionNudge(
+  el: AnimTarget,
+  opts: { angle?: number; duration?: number } = {}
+): void {
+  if (!el || shouldReduce()) return;
+  const { angle = 2.5, duration = 420 } = opts;
+  animate(el, {
+    rotate: [-angle, angle, -angle / 2, angle / 2, 0],
+    duration,
+    ease: "outCubic" as const,
+  });
+}

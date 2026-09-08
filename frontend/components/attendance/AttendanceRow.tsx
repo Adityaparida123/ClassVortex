@@ -29,14 +29,27 @@ export default function AttendanceRow({
   index,
 }: AttendanceRowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
+  const dotRef = useRef<HTMLSpanElement>(null);
+  const reduced = prefersReducedMotion();
 
   const handleSelect = (status: AttendanceStatus) => {
     onSelect(status);
-    if (!prefersReducedMotion() && rowRef.current) {
+    if (reduced) return;
+    if (rowRef.current) {
+      // Short status-change pulse; small enough to stay fast.
       animate(rowRef.current, {
-        backgroundColor: [`${DOT[status]}22`, "rgba(255,255,255,0.02)"],
-        duration: 400,
+        backgroundColor: [`${DOT[status]}1f`, "rgba(255,255,255,0.02)"],
+        scale: [1, 1.01, 1],
+        duration: 320,
         ease: "outQuad",
+      });
+    }
+    if (dotRef.current) {
+      // Pop the status dot to confirm selection instantly.
+      animate(dotRef.current, {
+        scale: [1, 1.8, 1],
+        duration: 260,
+        ease: "outBack",
       });
     }
   };
@@ -54,8 +67,13 @@ export default function AttendanceRow({
       </span>
       <div className="flex min-w-0 items-center gap-3">
         <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: DOT[selected], boxShadow: `0 0 8px ${DOT[selected]}` }}
+          ref={dotRef}
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{
+            background: DOT[selected],
+            boxShadow: `0 0 8px ${DOT[selected]}`,
+            transform: "scale(1)",
+          }}
         />
         <span className="truncate text-sm font-medium text-[var(--text)]">{name}</span>
       </div>
@@ -71,15 +89,20 @@ export default function AttendanceRow({
               aria-pressed={active}
               title={s.label}
               className={cx(
-                "flex h-8 min-w-[2rem] items-center justify-center rounded-lg border px-1.5 text-xs font-medium transition-all",
+                "flex h-8 min-w-[2rem] items-center justify-center gap-0.5 rounded-lg border px-1.5 text-xs font-medium transition-all",
                 active
                   ? "border-transparent text-white"
                   : "border-[var(--border-strong)] text-[var(--text-faint)] hover:bg-[rgba(255,255,255,0.06)]"
               )}
-              style={active ? { background: s.color } : undefined}
+              style={active ? { background: s.color, boxShadow: `0 0 12px ${s.color}66` } : undefined}
             >
+              {active && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m5 13 4 4L19 7" />
+                </svg>
+              )}
               {s.label.slice(0, 1)}
-              <span className="ml-1 hidden sm:inline">{s.label.slice(1)}</span>
+              <span className="ml-0.5 hidden sm:inline">{s.label.slice(1)}</span>
             </button>
           );
         })}

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { api, ApiError } from "@/lib/api";
 import PageContainer from "@/components/layout/PageContainer";
 import AttendanceVortex from "@/components/dashboard/AttendanceVortex";
-import { staggerIn } from "@/animations/index";
+import { staggerIn, animateIn } from "@/animations/index";
 import { cardIn } from "@/animations/cardAnimations";
 import { numberCountUp } from "@/animations/numberAnimations";
 import Card from "@/components/ui/Card";
@@ -106,6 +106,15 @@ export default function DashboardPage() {
     }
   }, [loading]);
 
+  // Animate today's panel in, and its sessions sequentially.
+  useEffect(() => {
+    if (!loading && todayRef.current) {
+      animateIn(todayRef.current, { duration: 500, delay: 250 });
+      const sess = Array.from(todayRef.current.querySelectorAll<HTMLElement>("[data-session]"));
+      if (sess.length) staggerIn(sess, { duration: 420, stagger: 90, from: "first" });
+    }
+  }, [loading, data.todaysSessions.length]);
+
   const firstName = user?.name?.split(" ")[0] ?? "";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -163,7 +172,8 @@ export default function DashboardPage() {
                   {data.todaysSessions.map((s, i) => (
                     <div
                       key={`${s.class_id}-${i}`}
-                      className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[rgba(255,255,255,0.03)] px-4 py-3"
+                      data-session
+                      className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[rgba(255,255,255,0.03)] px-4 py-3 opacity-0"
                     >
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-lg bg-[rgba(124,106,255,0.15)] text-[var(--primary-2)] flex items-center justify-center text-sm font-bold">

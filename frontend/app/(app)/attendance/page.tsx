@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import PageContainer from "@/components/layout/PageContainer";
-import Button from "@/components/ui/Button";
+import PageContainer from "@/components/layout/PageContainer";import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
@@ -14,7 +13,7 @@ import type { ClassItem } from "@/types/class";
 import type { Subject } from "@/types/class";
 import { todayISO, formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUSES } from "@/lib/constants";
-import { staggerIn } from "@/animations/index";
+import { staggerIn, successPop } from "@/animations/index";
 type Step = "setup" | "marking";
 
 export default function AttendancePage() {
@@ -26,6 +25,7 @@ export default function AttendancePage() {
   const [step, setStep] = useState<Step>("setup");
   const [setupError, setSetupError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const saveRef = useRef<HTMLDivElement>(null);
 
   const {
     session,
@@ -92,6 +92,12 @@ export default function AttendancePage() {
       staggerIn(els, { duration: 300, stagger: 35 });
     }
   }, [step, records.length]);
+
+  useEffect(() => {
+    if (success && saveRef.current) {
+      successPop(saveRef.current);
+    }
+  }, [success]);
 
   const handleReset = () => {
     reset();
@@ -181,7 +187,7 @@ export default function AttendancePage() {
               </div>
             )}
             {success && !error && (
-              <div className="mt-3 rounded-xl border border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.1)] px-4 py-3 text-sm text-[var(--success)]" role="status">
+              <div ref={saveRef} className="mt-3 rounded-xl border border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.1)] px-4 py-3 text-sm text-[var(--success)]" role="status">
                 Attendance saved successfully!
               </div>
             )}

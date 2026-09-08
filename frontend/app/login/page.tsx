@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
 import { TAGLINE } from "@/lib/constants";
-import { animateIn } from "@/animations/index";
+import { animateIn, continuousRotate } from "@/animations/index";
+import { prefersReducedMotion } from "@/lib/utils";
 import Icon from "@/components/ui/Icon";
 
 export default function LoginPage() {
@@ -18,6 +19,7 @@ export default function LoginPage() {
 
   const logoRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const bgRingRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -26,8 +28,12 @@ export default function LoginPage() {
   }, [isAuthenticated, router]);
 
   useEffect(() => {
+    const reduced = prefersReducedMotion();
     animateIn(logoRef.current, { duration: 600, delay: 100 });
     animateIn(formRef.current, { duration: 600, delay: 250 });
+    if (bgRingRef.current && !reduced) {
+      continuousRotate(bgRingRef.current, { duration: 48000 });
+    }
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -48,9 +54,10 @@ export default function LoginPage() {
     <div className="grid-bg relative flex min-h-screen items-center justify-center overflow-hidden px-4">
       {/* Background vortex */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[40rem] w-[40rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,106,255,0.14),transparent_60%)]" />
+        <div className="absolute left-1/2 top-1/2 h-[44rem] w-[44rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,106,255,0.14),transparent_60%)]" />
         <svg
-          className="absolute left-1/2 top-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 animate-spin-slow text-[var(--primary)]/20"
+          ref={bgRingRef}
+          className="absolute left-1/2 top-1/2 h-[42rem] w-[42rem] -translate-x-1/2 -translate-y-1/2 text-[var(--primary)]/20"
           viewBox="0 0 500 500"
           fill="none"
           stroke="currentColor"
@@ -58,6 +65,7 @@ export default function LoginPage() {
         >
           <circle cx="250" cy="250" r="220" strokeWidth="1" strokeDasharray="3 6" />
           <circle cx="250" cy="250" r="160" strokeWidth="1" strokeDasharray="1 8" />
+          <circle cx="250" cy="250" r="100" strokeWidth="1" strokeDasharray="6 10" />
         </svg>
       </div>
 
@@ -119,7 +127,14 @@ export default function LoginPage() {
           />
 
           <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                Signing in...
+              </span>
+            ) : (
+              "Sign In"
+            )}
           </button>
 
           <p className="mt-4 text-center text-xs text-[var(--text-faint)]">

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { numberCountUp } from "@/animations/numberAnimations";
-import { cardIn } from "@/animations/cardAnimations";
+import { cardIn, hoverLift } from "@/animations/cardAnimations";
+import { prefersReducedMotion } from "@/lib/utils";
 import Card from "@/components/ui/Card";
 
 interface StatCardProps {
@@ -13,6 +14,7 @@ interface StatCardProps {
   accent?: string;
   decimals?: boolean;
   delay?: number;
+  enableHover?: boolean;
 }
 
 export default function StatCard({
@@ -23,9 +25,11 @@ export default function StatCard({
   accent = "var(--primary)",
   decimals = false,
   delay = 0,
+  enableHover = true,
 }: StatCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const numRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     cardIn(ref.current, { duration: 500, delay });
@@ -36,9 +40,26 @@ export default function StatCard({
     }, { duration: 1000, decimals: decimals ? 1 : 0 });
   }, [value, decimals, delay]);
 
+  // Subtle hover depth (desktop only via fine pointer).
+  useEffect(() => {
+    if (enableHover && hovered && ref.current) {
+      hoverLift(ref.current, { on: true });
+    } else if (enableHover && ref.current) {
+      hoverLift(ref.current, { on: false });
+    }
+  }, [hovered, enableHover]);
+
   return (
-    <Card ref={ref} className="glass p-4 opacity-0" variant="glass">
-      <div className="flex items-start justify-between">
+    <Card
+      ref={ref}
+      className="glass p-4 opacity-0 transition-shadow duration-200 will-change-transform"
+      variant="glass"
+    >
+      <div
+        className="flex items-start justify-between"
+        onPointerEnter={() => !prefersReducedMotion() && setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+      >
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-faint)]">
             {label}

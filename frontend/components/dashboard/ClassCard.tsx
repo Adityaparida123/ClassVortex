@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Card from "@/components/ui/Card";
-import { formatTime } from "@/lib/utils";
-import { cardIn } from "@/animations/cardAnimations";
+import { formatTime, prefersReducedMotion } from "@/lib/utils";
+import { cardIn, hoverLift } from "@/animations/cardAnimations";
 
 interface ClassCardProps {
   name: string;
@@ -25,6 +25,7 @@ export default function ClassCard({
   delay = 0,
 }: ClassCardProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
   const pct = total ? Math.round((present ?? 0) / total * 100) : null;
   const accent = pct === null ? "var(--primary)" : pct >= 75 ? "var(--success)" : "var(--warning)";
 
@@ -32,9 +33,22 @@ export default function ClassCard({
     cardIn(ref.current, { duration: 500, delay });
   }, [delay]);
 
+  useEffect(() => {
+    if (hovered && ref.current) hoverLift(ref.current, { on: true });
+    else if (ref.current) hoverLift(ref.current, { on: false });
+  }, [hovered]);
+
   return (
-    <Card ref={ref} className="group flex items-center justify-between gap-3 rounded-2xl px-4 py-3 opacity-0" variant="glass">
-      <div className="flex items-center gap-3">
+    <Card
+      ref={ref}
+      className="group flex items-center justify-between gap-3 rounded-2xl px-4 py-3 opacity-0 will-change-transform"
+      variant="glass"
+    >
+      <div
+        className="flex items-center gap-3"
+        onPointerEnter={() => !prefersReducedMotion() && setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+      >
         <div
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-[var(--bg)]"
           style={{ background: `linear-gradient(135deg, var(--primary-2), var(--primary))` }}

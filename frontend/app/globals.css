@@ -258,3 +258,23 @@ input[type="number"]::-webkit-inner-spin-button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Mobile / touch: reduce decorative animation complexity.
+ * Hide the extra orbiting particles only; the core vortex ring,
+ * percentage, and status remain fully functional.
+ */
+@media (hover: none) {
+  .vortex-particle-extra {
+    display: none;
+  }
+  .vortex-glow {
+    filter: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .vortex-glow-fine {
+    filter: blur(2px);
+  }
+}

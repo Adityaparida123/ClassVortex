@@ -40,7 +40,7 @@ export default function AIChat() {
     setThinking(true);
     try {
       const res = await api.chat(content);
-      const reply = res?.message ?? "No response from the assistant.";
+      const reply = res?.answer || res?.message || "No response from the assistant.";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (e) {
       const err = e as ApiError;

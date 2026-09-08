@@ -365,7 +365,7 @@ export const api = {
 
   // AI
   chat: (message: string) =>
-    request<{ message: string }>("/ai/chat", {
+    request<{ answer?: string; message?: string; data?: unknown }>("/ai/chat", {
       method: "POST",
       body: { message },
     }),

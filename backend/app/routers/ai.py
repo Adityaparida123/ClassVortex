@@ -16,4 +16,12 @@ async def chat(
     current_user: dict = Depends(get_current_user),
 ):
     result = await process_message(request.message)
-    return {"success": True, "data": result}
+    ans = result.get("answer", "")
+    return {
+        "success": True,
+        "data": {
+            **result,
+            "answer": ans,
+            "message": ans,
+        },
+    }

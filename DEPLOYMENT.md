@@ -47,17 +47,25 @@ This guide details the steps to deploy AttendVortex to production using:
 
 ## B. Render Backend Setup
 
-1. **Create Web Service**:
-   - Log into [Render](https://render.com) and click **New +** → **Web Service**.
-   - Connect your GitHub repository containing AttendVortex.
+You can deploy the backend using either **Render Blueprints (Automated via `render.yaml`)** or **Manual Web Service Configuration**.
 
-2. **Configure Service Details**:
+### Option 1: Render Blueprint (Recommended)
+1. In the [Render Dashboard](https://dashboard.render.com), click **New +** → **Blueprint**.
+2. Connect your GitHub repository (`ClassVortex`).
+3. Render will automatically read `render.yaml`, set the root directory to `backend`, configure Python 3.11.9, and apply the build and start commands.
+
+### Option 2: Manual Web Service Setup
+1. In the [Render Dashboard](https://dashboard.render.com), click **New +** → **Web Service**.
+2. Connect your GitHub repository.
+3. Configure the following critical settings:
    - **Name**: `attendvortex-api` (or preferred name)
    - **Region**: Choose the region closest to your MongoDB Atlas cluster.
-   - **Root Directory**: `backend`
+   - **Root Directory**: `backend` *(CRITICAL: Must be set to `backend` since the FastAPI app and requirements.txt are inside `backend/`)*
    - **Runtime**: `Python`
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+> **Note on Root Directory**: If you see `ERROR: Could not open requirements file: [Errno 2] No such file or directory: 'requirements.txt'`, your Render Web Service is building from the repo root instead of `backend/`. Go to **Settings** → **Build & Deploy** → **Root Directory** in the Render service dashboard and enter `backend`.
 
 ---
 

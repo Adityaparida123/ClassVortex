@@ -32,7 +32,7 @@ import type {
   ClassReport,
 } from "@/types/report";
 
-function resolveBaseUrl(): string {
+function getBaseUrl(): string {
   const envUrl = (
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -47,8 +47,6 @@ function resolveBaseUrl(): string {
   }
   return cleaned;
 }
-
-const BASE_URL = resolveBaseUrl();
 
 export class ApiError extends Error {
   status: number;
@@ -117,10 +115,11 @@ async function requestRaw<T>(
   } = {}
 ): Promise<T> {
   const { method = "GET", body, auth = true, headers = {} } = options;
+  const baseUrl = getBaseUrl();
 
-  if (!BASE_URL) {
+  if (!baseUrl) {
     throw new ApiError(
-      "API URL is not configured. Set NEXT_PUBLIC_API_URL to point to the backend.",
+      "API URL is not configured. Set NEXT_PUBLIC_API_URL in your deployment environment variables and redeploy.",
       0
     );
   }
@@ -143,7 +142,7 @@ async function requestRaw<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, init);
+    res = await fetch(`${baseUrl}${path}`, init);
   } catch {
     throw new ApiError("Network error. Please check your connection.", 0);
   }
@@ -229,13 +228,14 @@ function queryString(params: Record<string, string | number | undefined>): strin
 }
 
 async function download(path: string): Promise<Blob | null> {
-  if (!BASE_URL) {
+  const baseUrl = getBaseUrl();
+  if (!baseUrl) {
     throw new ApiError(
-      "API URL is not configured. Set NEXT_PUBLIC_API_URL to point to the backend.",
+      "API URL is not configured. Set NEXT_PUBLIC_API_URL in your deployment environment variables and redeploy.",
       0
     );
   }
-  const res = await fetch(`${BASE_URL}${path}`, { headers: authHeaders() });
+  const res = await fetch(`${baseUrl}${path}`, { headers: authHeaders() });
   const contentType = res.headers.get("content-type") || "";
 
   if (!res.ok) {

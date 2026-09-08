@@ -1,14 +1,27 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
 import random
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import settings
 from app.core.security import hash_password
 
 
 async def seed():
-    print(f"Connecting to MongoDB at {settings.MONGODB_URI}...")
-    client = AsyncIOMotorClient(settings.MONGODB_URI)
+    print("Connecting to MongoDB...")
+    client_kwargs = {
+        "serverSelectionTimeoutMS": 10000,
+        "connectTimeoutMS": 10000,
+        "socketTimeoutMS": 45000,
+    }
+    if (
+        settings.MONGODB_URI.startswith("mongodb+srv://")
+        or "tls=true" in settings.MONGODB_URI.lower()
+        or "ssl=true" in settings.MONGODB_URI.lower()
+    ):
+        client_kwargs["tlsCAFile"] = certifi.where()
+
+    client = AsyncIOMotorClient(settings.MONGODB_URI, **client_kwargs)
     db = client[settings.MONGODB_DATABASE]
 
     # 1. Users
@@ -149,7 +162,6 @@ async def seed():
 
     for d in dates:
         date_str = d.isoformat()
-        # Session for Class 0, Subject 0
         existing_sess = await db.attendance_sessions.find_one({"date": date_str, "class_id": class_ids[0], "subject_id": subject_ids[0]})
         if not existing_sess:
             sess_doc = {
@@ -164,7 +176,6 @@ async def seed():
             res = await db.attendance_sessions.insert_one(sess_doc)
             sess_id = str(res.inserted_id)
 
-            # Records for the 10 students in class 0
             for st_id in student_ids[:10]:
                 status = random.choices(["present", "absent", "late", "excused"], weights=[80, 10, 7, 3])[0]
                 rec = {

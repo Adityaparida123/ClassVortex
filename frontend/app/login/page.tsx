@@ -10,10 +10,13 @@ import { prefersReducedMotion } from "@/lib/utils";
 import Icon from "@/components/ui/Icon";
 
 export default function LoginPage() {
-  const { login, isAuthenticated } = useAuth(false);
+  const { login, register, isAuthenticated } = useAuth(false);
   const router = useRouter();
+  const [mode, setMode] = useState<"signin" | "register">("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("teacher");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,17 +44,26 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await login(email, password);
+      if (mode === "register") {
+        await register(name, email, password, role);
+      } else {
+        await login(email, password);
+      }
     } catch (err) {
       const apiErr = err as ApiError;
-      setError(apiErr.message || "Login failed. Please try again.");
+      setError(apiErr.message || `${mode === "register" ? "Registration" : "Login"} failed. Please try again.`);
     } finally {
       setLoading(false);
     }
   };
 
+  const toggleMode = () => {
+    setError(null);
+    setMode((prev) => (prev === "signin" ? "register" : "signin"));
+  };
+
   return (
-    <div className="grid-bg relative flex min-h-screen items-center justify-center overflow-hidden px-4">
+    <div className="grid-bg relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8">
       {/* Background vortex */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[44rem] w-[44rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,106,255,0.14),transparent_60%)]" />
@@ -70,7 +82,7 @@ export default function LoginPage() {
       </div>
 
       <div className="relative z-10 w-full max-w-md">
-        <div ref={logoRef} className="mb-10 flex flex-col items-center text-center" style={{ opacity: 0 }}>
+        <div ref={logoRef} className="mb-8 flex flex-col items-center text-center" style={{ opacity: 0 }}>
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[rgba(124,106,255,0.15)] text-[var(--primary)]">
             <Icon name="vortex" size={38} />
           </div>
@@ -86,8 +98,37 @@ export default function LoginPage() {
           className="glass-strong p-7 shadow-2xl"
           style={{ opacity: 0 }}
         >
-          <h2 className="mb-1 text-lg font-semibold">Welcome back</h2>
-          <p className="mb-6 text-sm text-[var(--text-muted)]">Sign in to continue</p>
+          <div className="mb-6 flex rounded-xl bg-[rgba(255,255,255,0.04)] p-1">
+            <button
+              type="button"
+              onClick={() => { setMode("signin"); setError(null); }}
+              className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
+                mode === "signin"
+                  ? "bg-[var(--primary)] text-white shadow-md"
+                  : "text-[var(--text-muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode("register"); setError(null); }}
+              className={`flex-1 rounded-lg py-2 text-sm font-medium transition-all ${
+                mode === "register"
+                  ? "bg-[var(--primary)] text-white shadow-md"
+                  : "text-[var(--text-muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+
+          <h2 className="mb-1 text-lg font-semibold">
+            {mode === "register" ? "Create your account" : "Welcome back"}
+          </h2>
+          <p className="mb-6 text-sm text-[var(--text-muted)]">
+            {mode === "register" ? "Join AttendVortex to manage attendance" : "Sign in to continue"}
+          </p>
 
           {error && (
             <div
@@ -96,6 +137,24 @@ export default function LoginPage() {
             >
               {error}
             </div>
+          )}
+
+          {mode === "register" && (
+            <>
+              <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="name">
+                Full Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input-base mb-4"
+                placeholder="Dr. Sarah Jenkins"
+                required
+              />
+            </>
           )}
 
           <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="email">
@@ -118,24 +177,55 @@ export default function LoginPage() {
           <input
             id="password"
             type="password"
-            autoComplete="current-password"
+            autoComplete={mode === "register" ? "new-password" : "current-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="input-base mb-6"
+            className="input-base mb-4"
             placeholder="••••••••"
             required
           />
+
+          {mode === "register" && (
+            <>
+              <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="role">
+                Account Role
+              </label>
+              <select
+                id="role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="input-base mb-6"
+              >
+                <option value="teacher">Teacher</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </>
+          )}
 
           <button type="submit" className="btn-primary w-full" disabled={loading}>
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                Signing in...
+                {mode === "register" ? "Creating account..." : "Signing in..."}
               </span>
+            ) : mode === "register" ? (
+              "Create Account"
             ) : (
               "Sign In"
             )}
           </button>
+
+          <div className="mt-5 text-center">
+            <button
+              type="button"
+              onClick={toggleMode}
+              className="text-xs text-[var(--primary)] hover:underline"
+            >
+              {mode === "register"
+                ? "Already have an account? Sign in"
+                : "Don't have an account? Create an account"}
+            </button>
+          </div>
 
           <p className="mt-4 text-center text-xs text-[var(--text-faint)]">
             Attendance · Intelligence · In Motion

@@ -19,6 +19,7 @@ interface AuthContextValue {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, role?: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextValue>({
   token: null,
   loading: true,
   login: async () => {},
+  register: async () => {},
   logout: () => {},
   isAuthenticated: false,
 });
@@ -74,6 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [router]
   );
 
+  const register = useCallback(
+    async (name: string, email: string, password: string, role = "teacher") => {
+      await api.register(name, email, password, role);
+      await login(email, password);
+    },
+    [login]
+  );
+
   const logout = useCallback(() => {
     authStore.clearAuth();
     setToken(null);
@@ -83,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, login, logout, isAuthenticated: !!token }}
+      value={{ user, token, loading, login, register, logout, isAuthenticated: !!token }}
     >
       {children}
     </AuthContext.Provider>

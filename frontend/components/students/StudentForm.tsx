@@ -116,9 +116,9 @@ export default function StudentForm({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="student-class">Class</label>
+          <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="student-class">Course</label>
           <select id="student-class" className="input-base" value={classId} onChange={(e) => setClassId(e.target.value)} required>
-            {classes.length === 0 && <option value="">No classes available</option>}
+            {classes.length === 0 && <option value="">No courses available</option>}
             {classes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} · Sem {c.semester} · {c.section}

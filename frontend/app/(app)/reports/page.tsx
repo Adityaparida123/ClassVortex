@@ -113,9 +113,9 @@ export default function ReportsPage() {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--text-muted)]" htmlFor="rep-class">Class</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-muted)]" htmlFor="rep-class">Course</label>
             <select id="rep-class" className="input-base" value={classId} onChange={(e) => setClassId(e.target.value)}>
-              <option value="">All Classes</option>
+              <option value="">All Courses</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>{c.name} · {c.section}</option>
               ))}

@@ -14,7 +14,7 @@ def get_client_kwargs() -> dict:
     kwargs = {
         "serverSelectionTimeoutMS": 10000,
         "connectTimeoutMS": 10000,
-        "socketTimeoutMS": 45000,
+        "socketTimeoutMS": 30000,
     }
     uri = settings.MONGODB_URI
     if uri.startswith("mongodb+srv://") or "tls=true" in uri.lower() or "ssl=true" in uri.lower():

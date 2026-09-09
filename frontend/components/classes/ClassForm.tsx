@@ -57,7 +57,7 @@ export default function ClassForm({ open, onClose, editing, onSubmit }: ClassFor
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit Class" : "Create Class"}>
+    <Modal open={open} onClose={onClose} title={editing ? "Edit Course" : "Create Course"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">
@@ -85,7 +85,7 @@ export default function ClassForm({ open, onClose, editing, onSubmit }: ClassFor
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={submitting}>
-            {submitting ? "Saving..." : editing ? "Save Changes" : "Create Class"}
+            {submitting ? "Saving..." : editing ? "Save Changes" : "Create Course"}
           </Button>
         </div>
       </form>

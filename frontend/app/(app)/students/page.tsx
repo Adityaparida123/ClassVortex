@@ -172,7 +172,7 @@ export default function StudentsPage() {
           <div className="hidden grid-cols-[70px_1fr_1fr_100px_120px] gap-2 border-b border-[var(--border)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-faint)] sm:grid">
             <span>Roll</span>
             <span>Name</span>
-            <span>Class</span>
+            <span>Course</span>
             <span>Attendance</span>
             <span className="text-right">Actions</span>
           </div>

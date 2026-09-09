@@ -82,7 +82,6 @@ export default function AttendancePage() {
     setClasses(res.items ?? []);
     setPendingClassId(created.id);
     setShowClassForm(false);
-    setShowSubjectForm(true);
   };
 
   const handleOpenClassCreate = () => {
@@ -181,7 +180,13 @@ export default function AttendancePage() {
             </select>
           </div>
 
-          <Button className="mt-6 w-full" size="lg" onClick={startSession}>
+          {classes.length === 0 && (
+            <Button variant="ghost" className="w-full" onClick={handleOpenClassCreate}>
+              <Icon name="plus" size={16} /> Create Course
+            </Button>
+          )}
+
+          <Button className="mt-6 w-full" size="lg" onClick={startSession} disabled={!subjectId}>
             Start Attendance
           </Button>
         </Card>

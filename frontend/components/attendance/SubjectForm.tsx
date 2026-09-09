@@ -56,11 +56,11 @@ export default function SubjectForm({
       return;
     }
     if (classes.length === 0) {
-      setError("No classes available. Create a class first.");
+      setError("No courses available. Create a course first.");
       return;
     }
     if (classes.length > 0 && !selectedClassId) {
-      setError("Please select a class.");
+      setError("Please select a course.");
       return;
     }
 
@@ -102,7 +102,7 @@ export default function SubjectForm({
               className="mb-1 block text-sm font-medium text-[var(--text-muted)]"
               htmlFor="subject-class"
             >
-              Class
+              Course
             </label>
             <select
               id="subject-class"
@@ -111,7 +111,7 @@ export default function SubjectForm({
               onChange={(e) => setSelectedClassId(e.target.value)}
               required
             >
-              <option value="">Select class</option>
+              <option value="">Select course</option>
               {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>
                   {cls.name} ({cls.section})
@@ -126,7 +126,7 @@ export default function SubjectForm({
               className="rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]"
               role="alert"
             >
-              No classes available. Create a class first.
+              No courses available. Create a course first.
             </div>
             <Button
               type="button"
@@ -135,7 +135,7 @@ export default function SubjectForm({
               className="!px-3 !py-1.5 !text-xs"
               onClick={onCreateClass}
             >
-              <Icon name="plus" size={14} /> Create Class
+              <Icon name="plus" size={14} /> Create Course
             </Button>
           </div>
         )}

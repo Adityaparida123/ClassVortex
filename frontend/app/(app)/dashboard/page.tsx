@@ -122,7 +122,7 @@ export default function DashboardPage() {
 
   const statCards = [
     { label: "Students", value: data.totalStudents, icon: "👥", accent: "var(--primary)" },
-    { label: "Classes", value: data.totalClasses, icon: "🗂️", accent: "var(--primary-2)" },
+    { label: "Courses", value: data.totalClasses, icon: "🗂️", accent: "var(--primary-2)" },
     { label: "Present Today", value: data.presentToday, icon: "✅", accent: "var(--success)" },
     { label: "Absent Today", value: data.absentToday, icon: "🚫", accent: "var(--danger)" },
   ];
@@ -181,7 +181,7 @@ export default function DashboardPage() {
                           {s.start_time?.slice(0, 2)}
                         </div>
                         <div>
-                          <div className="text-sm font-medium">Class session</div>
+                          <div className="text-sm font-medium">Course session</div>
                           <div className="text-xs text-[var(--text-muted)]">{s.date}</div>
                         </div>
                       </div>

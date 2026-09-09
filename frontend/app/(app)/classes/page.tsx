@@ -88,11 +88,11 @@ export default function ClassesPage() {
 
   return (
     <PageContainer
-      title="Classes"
-      subtitle={`${classes.length} classes`}
+      title="Courses"
+      subtitle={`${classes.length} courses`}
       actions={
         <Button onClick={() => { setEditing(null); setShowForm(true); }}>
-          <Icon name="plus" size={16} /> Create Class
+          <Icon name="plus" size={16} /> Create Course
         </Button>
       }
       animateKey={`classes-${classes.length}`}
@@ -102,9 +102,9 @@ export default function ClassesPage() {
       ) : classes.length === 0 ? (
         <EmptyState
           icon="🗂️"
-          title="No classes yet"
-          message="Create your first class to start organizing students."
-          action={<Button onClick={() => { setEditing(null); setShowForm(true); }}>Create Class</Button>}
+          title="No courses yet"
+          message="Create your first course to start organizing students."
+          action={<Button onClick={() => { setEditing(null); setShowForm(true); }}>Create Course</Button>}
         />
       ) : (
         <div ref={gridRef} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -143,7 +143,7 @@ export default function ClassesPage() {
 
       {error && !loading && (
         <div className="mt-4">
-          <EmptyState title="Unable to load classes" message={error} />
+          <EmptyState title="Unable to load courses" message={error} />
         </div>
       )}
 
@@ -154,7 +154,7 @@ export default function ClassesPage() {
         onSubmit={handleSubmit}
       />
 
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Class">
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Delete Course">
         <p className="text-sm text-[var(--text-muted)]">
           Delete <strong className="text-[var(--text)]">{deleteTarget?.name}</strong>? This may affect associated students and attendance records.
         </p>

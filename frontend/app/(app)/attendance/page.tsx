@@ -22,7 +22,6 @@ type Step = "setup" | "marking";
 export default function AttendancePage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [preferredClassId, setPreferredClassId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [step, setStep] = useState<Step>("setup");
@@ -51,9 +50,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     api.getClasses({ limit: 100 }).then((r) => {
-      const items = r.items ?? [];
-      setClasses(items);
-      if (items[0]) setPreferredClassId(items[0].id);
+      setClasses(r.items ?? []);
     }).catch(() => {});
   }, []);
 
@@ -67,7 +64,6 @@ export default function AttendancePage() {
 
   const selectedSubject = subjects.find((s) => s.id === subjectId) ?? null;
   const classId = selectedSubject?.class_id ?? "";
-  const subjectTargetClassId = selectedSubject?.class_id || preferredClassId || classes[0]?.id || "";
 
   const handleCreateSubject = async (data: SubjectCreate) => {
     const subj = await api.createSubject(data);
@@ -154,7 +150,7 @@ export default function AttendancePage() {
           <div className="mb-4">
             <div className="mb-1 flex items-center justify-between gap-2">
               <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
-              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={!subjectTargetClassId}>
+              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={classes.length === 0}>
                 <Icon name="plus" size={14} /> Create Subject
               </Button>
             </div>
@@ -232,7 +228,7 @@ export default function AttendancePage() {
       <SubjectForm
         open={showSubjectForm}
         onClose={() => setShowSubjectForm(false)}
-        classId={subjectTargetClassId}
+        classes={classes}
         teacherId={user?.id ?? ""}
         onSubmit={handleCreateSubject}
       />

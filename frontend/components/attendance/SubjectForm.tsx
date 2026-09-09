@@ -3,12 +3,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
-import type { SubjectCreate } from "@/types/class";
+import type { ClassItem, SubjectCreate } from "@/types/class";
 
 interface SubjectFormProps {
   open: boolean;
   onClose: () => void;
-  classId: string;
+  classes: ClassItem[];
   teacherId: string;
   onSubmit: (data: SubjectCreate) => Promise<void>;
 }
@@ -16,10 +16,11 @@ interface SubjectFormProps {
 export default function SubjectForm({
   open,
   onClose,
-  classId,
+  classes,
   teacherId,
   onSubmit,
 }: SubjectFormProps) {
+  const [selectedClassId, setSelectedClassId] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -30,8 +31,9 @@ export default function SubjectForm({
       setError(null);
       setName("");
       setCode("");
+      setSelectedClassId(classes.length === 1 ? classes[0].id : "");
     }
-  }, [open]);
+  }, [open, classes]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -46,8 +48,8 @@ export default function SubjectForm({
       setError("Subject code is required.");
       return;
     }
-    if (!classId) {
-      setError("Select a class before creating a subject.");
+    if (classes.length > 0 && !selectedClassId) {
+      setError("Please select a class.");
       return;
     }
 
@@ -57,7 +59,7 @@ export default function SubjectForm({
       await onSubmit({
         name: trimmedName,
         code: trimmedCode,
-        class_id: classId,
+        class_id: selectedClassId,
         teacher_id: teacherId,
       });
       onClose();
@@ -70,6 +72,8 @@ export default function SubjectForm({
     }
   };
 
+  const showClassSelector = classes.length > 1;
+
   return (
     <Modal open={open} onClose={onClose} title="Create Subject">
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -79,6 +83,30 @@ export default function SubjectForm({
             role="alert"
           >
             {error}
+          </div>
+        )}
+        {showClassSelector && (
+          <div>
+            <label
+              className="mb-1 block text-sm font-medium text-[var(--text-muted)]"
+              htmlFor="subject-class"
+            >
+              Class
+            </label>
+            <select
+              id="subject-class"
+              className="input-base"
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              required
+            >
+              <option value="">Select class</option>
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name} ({cls.section})
+                </option>
+              ))}
+            </select>
           </div>
         )}
         <div>

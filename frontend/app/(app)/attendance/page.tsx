@@ -9,11 +9,12 @@ import Badge from "@/components/ui/Badge";
 import Icon from "@/components/ui/Icon";
 import AttendanceRow from "@/components/attendance/AttendanceRow";
 import SubjectForm from "@/components/attendance/SubjectForm";
+import ClassForm from "@/components/classes/ClassForm";
 import { api, ApiError } from "@/lib/api";
 import { useAttendance } from "@/hooks/useAttendance";
 import { useAuth } from "@/hooks/useAuth";
 import type { Student } from "@/types/student";
-import type { ClassItem, Subject, SubjectCreate } from "@/types/class";
+import type { ClassItem, ClassCreate, ClassUpdate, Subject, SubjectCreate } from "@/types/class";
 import { todayISO, formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUSES } from "@/lib/constants";
 import { staggerIn, successPop } from "@/animations/index";
@@ -27,6 +28,8 @@ export default function AttendancePage() {
   const [step, setStep] = useState<Step>("setup");
   const [setupError, setSetupError] = useState<string | null>(null);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
+  const [showClassForm, setShowClassForm] = useState(false);
+  const [pendingClassId, setPendingClassId] = useState("");
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const saveRef = useRef<HTMLDivElement>(null);
@@ -71,6 +74,21 @@ export default function AttendancePage() {
     setSubjects(next);
     setSubjectId(subj.id);
     setCreateFeedback(`Subject "${subj.name}" created.`);
+  };
+
+  const handleCreateClass = async (data: ClassCreate | ClassUpdate) => {
+    const created = await api.createClass(data as ClassCreate);
+    const res = await api.getClasses({ limit: 100 });
+    setClasses(res.items ?? []);
+    setPendingClassId(created.id);
+    setShowClassForm(false);
+    setShowSubjectForm(true);
+  };
+
+  const handleOpenClassCreate = () => {
+    setPendingClassId("");
+    setShowSubjectForm(false);
+    setShowClassForm(true);
   };
 
   const startSession = async () => {
@@ -227,10 +245,21 @@ export default function AttendancePage() {
 
       <SubjectForm
         open={showSubjectForm}
-        onClose={() => setShowSubjectForm(false)}
+        onClose={() => {
+          setShowSubjectForm(false);
+          setPendingClassId("");
+        }}
         classes={classes}
         teacherId={user?.id ?? ""}
+        defaultClassId={pendingClassId}
+        onCreateClass={handleOpenClassCreate}
         onSubmit={handleCreateSubject}
+      />
+
+      <ClassForm
+        open={showClassForm}
+        onClose={() => setShowClassForm(false)}
+        onSubmit={handleCreateClass}
       />
     </PageContainer>
   );

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
+import Icon from "@/components/ui/Icon";
 import type { ClassItem, SubjectCreate } from "@/types/class";
 
 interface SubjectFormProps {
@@ -11,6 +12,8 @@ interface SubjectFormProps {
   classes: ClassItem[];
   teacherId: string;
   onSubmit: (data: SubjectCreate) => Promise<void>;
+  onCreateClass: () => void;
+  defaultClassId?: string;
 }
 
 export default function SubjectForm({
@@ -19,6 +22,8 @@ export default function SubjectForm({
   classes,
   teacherId,
   onSubmit,
+  onCreateClass,
+  defaultClassId = "",
 }: SubjectFormProps) {
   const [selectedClassId, setSelectedClassId] = useState("");
   const [name, setName] = useState("");
@@ -31,9 +36,11 @@ export default function SubjectForm({
       setError(null);
       setName("");
       setCode("");
-      setSelectedClassId(classes.length === 1 ? classes[0].id : "");
+      setSelectedClassId(
+        defaultClassId || (classes.length === 1 ? classes[0].id : "")
+      );
     }
-  }, [open, classes]);
+  }, [open, classes, defaultClassId]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -114,11 +121,22 @@ export default function SubjectForm({
           </div>
         )}
         {classes.length === 0 && (
-          <div
-            className="rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]"
-            role="alert"
-          >
-            No classes available. Create a class first.
+          <div className="space-y-3">
+            <div
+              className="rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]"
+              role="alert"
+            >
+              No classes available. Create a class first.
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="!px-3 !py-1.5 !text-xs"
+              onClick={onCreateClass}
+            >
+              <Icon name="plus" size={14} /> Create Class
+            </Button>
           </div>
         )}
         <div>

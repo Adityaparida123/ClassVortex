@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class ClassModel(BaseModel):
     id: Optional[str] = None
+    teacher_id: str
     name: str
     semester: int
     section: str = "A"

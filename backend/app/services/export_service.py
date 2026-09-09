@@ -10,8 +10,8 @@ from app.utils.helpers import serialize_id
 EXPORT_HEADERS = ["Date", "Class", "Subject", "Roll Number", "Student Name", "Status", "Teacher"]
 
 
-def build_session_query(class_id: str = None, from_date: str = None, to_date: str = None) -> dict:
-    query = {}
+def build_session_query(teacher_id: str, class_id: str = None, from_date: str = None, to_date: str = None) -> dict:
+    query = {"teacher_id": teacher_id}
     if class_id:
         query["class_id"] = class_id
     if from_date and to_date:
@@ -32,9 +32,9 @@ async def resolve_lookup(collection, raw_id):
         return None
 
 
-async def build_export_rows(class_id: str = None, from_date: str = None, to_date: str = None) -> list:
+async def build_export_rows(teacher_id: str, class_id: str = None, from_date: str = None, to_date: str = None) -> list:
     db = get_database()
-    query = build_session_query(class_id, from_date, to_date)
+    query = build_session_query(teacher_id, class_id, from_date, to_date)
 
     sessions = []
     async for session in db.attendance_sessions.find(query).sort("date", -1):
@@ -45,7 +45,10 @@ async def build_export_rows(class_id: str = None, from_date: str = None, to_date
         return []
 
     records = []
-    async for record in db.attendance_records.find({"session_id": {"$in": session_ids}}):
+    async for record in db.attendance_records.find({
+        "session_id": {"$in": session_ids},
+        "teacher_id": teacher_id,
+    }):
         records.append(serialize_id(record))
 
     session_map = {s["id"]: s for s in sessions}
@@ -72,9 +75,9 @@ async def build_export_rows(class_id: str = None, from_date: str = None, to_date
 
 
 async def export_attendance_csv(
-    class_id: str = None, from_date: str = None, to_date: str = None
+    teacher_id: str, class_id: str = None, from_date: str = None, to_date: str = None
 ) -> str:
-    rows = await build_export_rows(class_id, from_date, to_date)
+    rows = await build_export_rows(teacher_id, class_id, from_date, to_date)
     if not rows:
         return None
 
@@ -91,9 +94,9 @@ async def export_attendance_csv(
 
 
 async def export_attendance_excel(
-    class_id: str = None, from_date: str = None, to_date: str = None
+    teacher_id: str, class_id: str = None, from_date: str = None, to_date: str = None
 ) -> str:
-    rows = await build_export_rows(class_id, from_date, to_date)
+    rows = await build_export_rows(teacher_id, class_id, from_date, to_date)
     if not rows:
         return None
 

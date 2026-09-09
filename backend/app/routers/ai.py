@@ -15,7 +15,7 @@ async def chat(
     request: ChatRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    result = await process_message(request.message)
+    result = await process_message(request.message, str(current_user["_id"]))
     ans = result.get("answer", "")
     return {
         "success": True,

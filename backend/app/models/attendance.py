@@ -23,6 +23,7 @@ class AttendanceRecordModel(BaseModel):
     id: Optional[str] = None
     session_id: str
     student_id: str
+    teacher_id: str
     status: str = "present"
     marked_at: datetime = None
 

@@ -132,7 +132,12 @@ async def _get_demo_teacher() -> dict:
 async def _ensure_demo_class(demo_teacher: dict) -> dict:
     """Create the demo class if it does not already exist."""
     db = get_database()
-    existing = await db.classes.find_one({"name": DEMO_CLASS["name"], "section": DEMO_CLASS["section"]})
+    teacher_id = demo_teacher.get("_id") or demo_teacher.get("id") or ""
+    existing = await db.classes.find_one({
+        "name": DEMO_CLASS["name"],
+        "section": DEMO_CLASS["section"],
+        "teacher_id": str(teacher_id),
+    })
     if existing:
         return existing
     cls = await create_class({
@@ -140,35 +145,36 @@ async def _ensure_demo_class(demo_teacher: dict) -> dict:
         "semester": DEMO_CLASS["semester"],
         "section": DEMO_CLASS["section"],
         "academic_year": DEMO_CLASS["academic_year"],
-        "teacher_id": demo_teacher.get("_id", demo_teacher.get("id", "")),
-    })
+        "teacher_id": str(teacher_id),
+    }, teacher_id=str(teacher_id))
     return cls
 
 
 async def _ensure_demo_subject(demo_teacher: dict, demo_class: dict) -> dict:
-    """Create the demo subject if it does not already exist (keyed by code)."""
+    """Create the demo subject if it does not already exist (keyed by code + teacher)."""
     db = get_database()
-    existing = await db.subjects.find_one({"code": DEMO_SUBJECT["code"]})
+    teacher_id = demo_teacher.get("_id") or demo_teacher.get("id") or ""
+    existing = await db.subjects.find_one({"code": DEMO_SUBJECT["code"], "teacher_id": str(teacher_id)})
     if existing:
         return existing
-    teacher_id = demo_teacher.get("_id") or demo_teacher.get("id") or ""
     subject = await create_subject({
         "name": DEMO_SUBJECT["name"],
         "code": DEMO_SUBJECT["code"],
-        "class_id": demo_class["id"],
-        "teacher_id": teacher_id,
-    })
+        "class_id": str(demo_class.get("_id") or demo_class.get("id") or ""),
+        "teacher_id": str(teacher_id),
+    }, teacher_id=str(teacher_id))
     return subject
 
 
-async def _ensure_demo_students(demo_class: dict) -> list:
-    """Create all 58 demo students if they do not already exist."""
+async def _ensure_demo_students(demo_teacher: dict, demo_class: dict) -> list:
+    """Create all 58 demo students if they do not already exist (scoped to the demo teacher)."""
     db = get_database()
+    teacher_id = str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
     created = []
 
     for idx, (_, roll_number, name) in enumerate(DEMO_STUDENTS):
-        # Skip if a student with this roll_number already exists
-        existing = await db.students.find_one({"roll_number": roll_number})
+        # Skip if a student with this roll_number already exists for this teacher
+        existing = await db.students.find_one({"teacher_id": teacher_id, "roll_number": roll_number})
         if existing:
             created.append(existing)
             continue
@@ -178,10 +184,10 @@ async def _ensure_demo_students(demo_class: dict) -> list:
             "roll_number": str(roll_number),
             "name": name,
             "email": email,
-            "class_id": demo_class["id"],
+            "class_id": str(demo_class.get("_id") or demo_class.get("id") or ""),
             "semester": 3,
             "section": "A",
-        })
+        }, teacher_id=teacher_id)
         created.append(student)
 
     return created
@@ -209,13 +215,24 @@ async def _ensure_demo_attendance(demo_teacher: dict, demo_class: dict, demo_sub
         session_dates.append(d.isoformat())
 
     # Get teacher id - try multiple fields
-    teacher_id = demo_teacher.get("_id") or demo_teacher.get("id") or ""
+    teacher_id = str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
+    demo_class_id = str(demo_class.get("_id") or demo_class.get("id") or "")
+    demo_subject_id = str(demo_subject.get("_id") or demo_subject.get("id") or "")
 
     # Create sessions and bulk insert attendance records
     for s_idx, session_date in enumerate(session_dates):
+        existing_session = await db.attendance_sessions.find_one({
+            "class_id": demo_class_id,
+            "subject_id": demo_subject_id,
+            "date": session_date,
+            "teacher_id": teacher_id,
+        })
+        if existing_session:
+            continue
+
         # Create the attendance session using _id field
         session = await create_session(
-            {"class_id": demo_class.get("_id") or demo_class.get("id", ""), "subject_id": demo_subject.get("_id") or demo_subject.get("id", ""), "date": session_date},
+            {"class_id": demo_class_id, "subject_id": demo_subject_id, "date": session_date},
             teacher_id=teacher_id,
         )
 
@@ -223,7 +240,7 @@ async def _ensure_demo_attendance(demo_teacher: dict, demo_class: dict, demo_sub
         # Deterministic pattern: present if (stu_idx + s_idx) % 7 != 0
         records = []
         for stu_idx, (_, roll_number, name) in enumerate(DEMO_STUDENTS):
-            student = await db.students.find_one({"roll_number": roll_number})
+            student = await db.students.find_one({"teacher_id": teacher_id, "roll_number": roll_number})
             if not student:
                 continue
 
@@ -232,12 +249,12 @@ async def _ensure_demo_attendance(demo_teacher: dict, demo_class: dict, demo_sub
 
             records.append({
                 "session_id": session["id"],
-                "student_id": student["_id"],
+                "student_id": str(student["_id"]),
                 "status": status,
             })
 
         # Bulk create records for this session
-        await bulk_create_records(session["id"], records)
+        await bulk_create_records(session["id"], records, teacher_id=teacher_id)
 
 
 async def main():
@@ -271,12 +288,13 @@ async def main():
 
         # 4. Ensure demo students
         print("\n4. Ensuring 58 demo students...")
-        students = await _ensure_demo_students(demo_class)
+        students = await _ensure_demo_students(demo_teacher, demo_class)
         print(f"   Total students created/already exist: {len(students)}")
 
         # 5. Verify class student count
-        cid = demo_class.get("_id") or demo_class.get("id") or ""
-        class_students = await get_students_by_class(cid)
+        cid = str(demo_class.get("_id") or demo_class.get("id") or "")
+        teacher_id = str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
+        class_students = await get_students_by_class(cid, teacher_id)
         print(f"   Students in demo class from DB: {len(class_students)}")
 
         # 6. Ensure attendance
@@ -288,9 +306,9 @@ async def main():
         for stu_idx in [0, 2, 5]:
             roll, name = DEMO_STUDENTS[stu_idx][1], DEMO_STUDENTS[stu_idx][2]
             db = get_database()
-            s_doc = await db.students.find_one({"roll_number": roll})
+            s_doc = await db.students.find_one({"teacher_id": teacher_id, "roll_number": roll})
             if s_doc:
-                summary = await get_student_summary(s_doc["_id"])
+                summary = await get_student_summary(str(s_doc["_id"]), teacher_id)
                 print(f"   {name} (roll {roll}): {summary['present']}present/{summary['total_classes']}sessions = {summary['attendance_percentage']}%")
 
         # 8. Auth verification

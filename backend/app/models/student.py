@@ -6,6 +6,7 @@ from bson import ObjectId
 
 class StudentModel(BaseModel):
     id: Optional[str] = None
+    teacher_id: str
     roll_number: str
     name: str
     email: Optional[str] = ""

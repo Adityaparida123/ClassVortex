@@ -16,7 +16,7 @@ async def export_csv(
     current_user: dict = Depends(get_current_user),
 ):
     filepath = await export_service.export_attendance_csv(
-        class_id=class_id, from_date=from_date, to_date=to_date
+        str(current_user["_id"]), class_id=class_id, from_date=from_date, to_date=to_date
     )
     if not filepath:
         return {"success": True, "data": {"message": "No data to export"}}
@@ -35,7 +35,7 @@ async def export_excel(
     current_user: dict = Depends(get_current_user),
 ):
     filepath = await export_service.export_attendance_excel(
-        class_id=class_id, from_date=from_date, to_date=to_date
+        str(current_user["_id"]), class_id=class_id, from_date=from_date, to_date=to_date
     )
     if not filepath:
         return {"success": True, "data": {"message": "No data to export"}}

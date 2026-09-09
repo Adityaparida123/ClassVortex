@@ -73,7 +73,9 @@ async def analyze_sheet(
     auto_detected = all(v is not None for v in col_map.values())
 
     db = get_database()
-    cursor = db.students.find({}, {"roll_number": 1, "email": 1})
+    cursor = db.students.find(
+        {"teacher_id": str(current_user["_id"])}, {"roll_number": 1, "email": 1}
+    )
     existing_rolls: set[str] = set()
     existing_emails: set[str] = set()
     async for doc in cursor:
@@ -149,7 +151,9 @@ async def confirm_import(
         )
 
     db = get_database()
-    cursor = db.students.find({}, {"roll_number": 1, "email": 1})
+    cursor = db.students.find(
+        {"teacher_id": str(current_user["_id"])}, {"roll_number": 1, "email": 1}
+    )
     existing_rolls: set[str] = set()
     existing_emails: set[str] = set()
     async for doc in cursor:
@@ -183,6 +187,7 @@ async def confirm_import(
             "email": r["email"],
             "phone": "",
             "class_id": "unassigned",
+            "teacher_id": str(current_user["_id"]),
             "semester": 1,
             "section": "A",
             "is_active": True,

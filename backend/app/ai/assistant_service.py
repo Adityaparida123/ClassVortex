@@ -5,34 +5,34 @@ from app.ai.prompts import SYSTEM_PROMPT, TOOL_DESCRIPTIONS
 from app.ai import tools
 
 
-async def process_message(message: str) -> dict:
+async def process_message(message: str, teacher_id: str) -> dict:
     tool_used = None
     data = None
 
     message_lower = message.lower()
 
     # 1. Check for student-specific queries (e.g. "What is Rahul's attendance?")
-    st_info = await tools.find_student_attendance(message)
+    st_info = await tools.find_student_attendance(message, teacher_id)
     if st_info:
         tool_used = "find_student_attendance"
         data = st_info
     elif any(phrase in message_lower for phrase in ["below 75", "less than 75", "low attendance", "lowest attendance"]):
         tool_used = "get_low_attendance_students"
-        data = await tools.get_low_attendance_students(75.0)
+        data = await tools.get_low_attendance_students(75.0, teacher_id)
     elif any(phrase in message_lower for phrase in ["absent", "who is absent", "not present"]):
         tool_used = "get_absent_students"
-        data = await tools.get_absent_students()
+        data = await tools.get_absent_students(teacher_id)
     elif "monthly" in message_lower and "report" in message_lower:
         tool_used = "get_monthly_report"
-        data = await tools.get_monthly_report()
+        data = await tools.get_monthly_report("", teacher_id)
     elif "student" in message_lower and any(c.isdigit() for c in message):
         match = re.search(r'[a-f0-9]{24}', message)
         if match:
             tool_used = "get_student_attendance"
-            data = await tools.get_student_attendance(match.group())
+            data = await tools.get_student_attendance(match.group(), teacher_id)
 
     if data is None and tool_used is None:
-        data = await tools.get_low_attendance_students(75.0)
+        data = await tools.get_low_attendance_students(75.0, teacher_id)
         tool_used = "get_low_attendance_students"
 
     messages = [

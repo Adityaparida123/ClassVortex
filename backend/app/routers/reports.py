@@ -12,7 +12,9 @@ async def daily_report(
     date: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    report = await report_service.get_daily_report(class_id=class_id, date=date)
+    report = await report_service.get_daily_report(
+        str(current_user["_id"]), class_id=class_id, date=date
+    )
     return {"success": True, "data": report}
 
 
@@ -22,7 +24,9 @@ async def monthly_report(
     month: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    report = await report_service.get_monthly_report(class_id=class_id, month=month)
+    report = await report_service.get_monthly_report(
+        str(current_user["_id"]), class_id=class_id, month=month
+    )
     return {"success": True, "data": report}
 
 
@@ -31,7 +35,7 @@ async def student_report(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    report = await report_service.get_student_report(student_id)
+    report = await report_service.get_student_report(str(current_user["_id"]), student_id)
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return {"success": True, "data": report}
@@ -42,7 +46,7 @@ async def class_report(
     class_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    report = await report_service.get_class_report(class_id)
+    report = await report_service.get_class_report(str(current_user["_id"]), class_id)
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     return {"success": True, "data": report}

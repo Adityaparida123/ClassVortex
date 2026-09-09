@@ -110,6 +110,15 @@ async def test_attendance_flow(client):
     }, headers=headers)
     class_id = class_resp.json()["data"]["id"]
 
+    subject_resp = await client.post("/api/v1/subjects", json={
+        "name": "Test Subject",
+        "code": "TSUB01",
+        "class_id": class_id,
+        "teacher_id": "ignored",
+    }, headers=headers)
+    assert subject_resp.status_code == 200
+    subject_id = subject_resp.json()["data"]["id"]
+
     student_resp = await client.post("/api/v1/students", json={
         "roll_number": "T001",
         "name": "Test Student",
@@ -120,7 +129,7 @@ async def test_attendance_flow(client):
 
     session_resp = await client.post("/api/v1/attendance/sessions", json={
         "class_id": class_id,
-        "subject_id": "test_subject_id",
+        "subject_id": subject_id,
         "date": "2026-09-08",
     }, headers=headers)
     assert session_resp.status_code == 200
@@ -139,6 +148,7 @@ async def test_attendance_flow(client):
     assert summary["present"] == 1
 
     await client.delete(f"/api/v1/students/{student_id}", headers=headers)
+    await client.delete(f"/api/v1/subjects/{subject_id}", headers=headers)
     await client.delete(f"/api/v1/classes/{class_id}", headers=headers)
 
 

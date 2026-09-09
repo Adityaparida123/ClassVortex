@@ -17,9 +17,12 @@ async def create_session(
     request: AttendanceSessionCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    session = await attendance_service.create_session(
-        request.model_dump(), teacher_id=str(current_user["_id"])
-    )
+    try:
+        session = await attendance_service.create_session(
+            request.model_dump(), teacher_id=str(current_user["_id"])
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return {"success": True, "data": session}
 
 
@@ -33,7 +36,7 @@ async def list_sessions(
     current_user: dict = Depends(get_current_user),
 ):
     sessions, total = await attendance_service.get_sessions(
-        page=page, limit=limit, class_id=class_id,
+        str(current_user["_id"]), page=page, limit=limit, class_id=class_id,
         subject_id=subject_id, date=date,
     )
     return {
@@ -48,10 +51,10 @@ async def get_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    session = await attendance_service.get_session_by_id(session_id)
+    session = await attendance_service.get_session_by_id(session_id, str(current_user["_id"]))
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    records = await attendance_service.get_records_by_session(session_id)
+    records = await attendance_service.get_records_by_session(session_id, str(current_user["_id"]))
     return {"success": True, "data": {"session": session, "records": records}}
 
 
@@ -63,7 +66,7 @@ async def create_record(
 ):
     try:
         record = await attendance_service.create_record(
-            session_id, request.student_id, request.status
+            session_id, request.student_id, request.status, str(current_user["_id"])
         )
         return {"success": True, "data": record}
     except ValueError as e:
@@ -76,12 +79,12 @@ async def bulk_mark_attendance(
     request: AttendanceRecordBulk,
     current_user: dict = Depends(get_current_user),
 ):
-    session = await attendance_service.get_session_by_id(session_id)
+    session = await attendance_service.get_session_by_id(session_id, str(current_user["_id"]))
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     records = await attendance_service.bulk_create_records(
-        session_id, [r.model_dump() for r in request.records]
+        session_id, [r.model_dump() for r in request.records], str(current_user["_id"])
     )
     return {"success": True, "data": records}
 
@@ -92,7 +95,7 @@ async def update_record(
     request: AttendanceRecordUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    record = await attendance_service.update_record(record_id, request.status)
+    record = await attendance_service.update_record(record_id, request.status, str(current_user["_id"]))
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
     return {"success": True, "data": record}
@@ -103,7 +106,7 @@ async def get_student_attendance(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    records = await attendance_service.get_records_by_student(student_id)
+    records = await attendance_service.get_records_by_student(student_id, str(current_user["_id"]))
     return {"success": True, "data": records}
 
 
@@ -112,7 +115,7 @@ async def get_student_summary(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    summary = await attendance_service.get_student_summary(student_id)
+    summary = await attendance_service.get_student_summary(student_id, str(current_user["_id"]))
     return {"success": True, "data": summary}
 
 
@@ -122,5 +125,5 @@ async def get_class_attendance(
     date: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    records = await attendance_service.get_records_by_class(class_id, date)
+    records = await attendance_service.get_records_by_class(class_id, str(current_user["_id"]), date)
     return {"success": True, "data": records}

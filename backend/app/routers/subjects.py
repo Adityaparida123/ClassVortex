@@ -2,9 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Optional
 from app.schemas.subject import SubjectCreate, SubjectUpdate, SubjectResponse
 from app.services import subject_service
+from app.services import class_service
 from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1/subjects", tags=["Subjects"])
+
+
+async def _ensure_class_owned(class_id: str, teacher_id: str):
+    cls = await class_service.get_class_by_id(class_id, teacher_id)
+    if not cls:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
 
 @router.post("", response_model=dict)
@@ -12,8 +19,10 @@ async def create_subject(
     request: SubjectCreate,
     current_user: dict = Depends(get_current_user),
 ):
+    teacher_id = str(current_user["_id"])
+    await _ensure_class_owned(request.class_id, teacher_id)
     try:
-        subject = await subject_service.create_subject(request.model_dump())
+        subject = await subject_service.create_subject(request.model_dump(), teacher_id)
         return {"success": True, "data": subject}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -26,7 +35,9 @@ async def list_subjects(
     class_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    subjects, total = await subject_service.get_subjects(page=page, limit=limit, class_id=class_id)
+    subjects, total = await subject_service.get_subjects(
+        str(current_user["_id"]), page=page, limit=limit, class_id=class_id
+    )
     return {
         "success": True,
         "data": subjects,
@@ -39,7 +50,7 @@ async def get_subject(
     subject_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    subject = await subject_service.get_subject_by_id(subject_id)
+    subject = await subject_service.get_subject_by_id(subject_id, str(current_user["_id"]))
     if not subject:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
     return {"success": True, "data": subject}
@@ -51,7 +62,15 @@ async def update_subject(
     request: SubjectUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    subject = await subject_service.update_subject(subject_id, request.model_dump(exclude_unset=True))
+    teacher_id = str(current_user["_id"])
+    if request.class_id:
+        await _ensure_class_owned(request.class_id, teacher_id)
+    try:
+        subject = await subject_service.update_subject(
+            subject_id, request.model_dump(exclude_unset=True), teacher_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     if not subject:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
     return {"success": True, "data": subject}
@@ -62,7 +81,7 @@ async def delete_subject(
     subject_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    deleted = await subject_service.delete_subject(subject_id)
+    deleted = await subject_service.delete_subject(subject_id, str(current_user["_id"]))
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
     return {"success": True, "data": {"message": "Subject deleted"}}

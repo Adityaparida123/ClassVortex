@@ -5,12 +5,15 @@ from app.database import get_database
 from app.utils.helpers import serialize_id
 
 
-async def create_subject(data: dict) -> dict:
+async def create_subject(data: dict, teacher_id: str) -> dict:
     db = get_database()
-    existing = await db.subjects.find_one({"code": data["code"]})
+    existing = await db.subjects.find_one(
+        {"teacher_id": teacher_id, "code": data["code"]}
+    )
     if existing:
         raise ValueError("Subject code already exists")
 
+    data["teacher_id"] = teacher_id
     data["created_at"] = datetime.now(timezone.utc)
     data["is_active"] = True
     result = await db.subjects.insert_one(data)
@@ -19,10 +22,10 @@ async def create_subject(data: dict) -> dict:
 
 
 async def get_subjects(
-    page: int = 1, limit: int = 20, class_id: Optional[str] = None
+    teacher_id: str, page: int = 1, limit: int = 20, class_id: Optional[str] = None
 ) -> tuple:
     db = get_database()
-    query = {}
+    query = {"teacher_id": teacher_id}
     if class_id:
         query["class_id"] = class_id
 
@@ -35,27 +38,47 @@ async def get_subjects(
     return subjects, total
 
 
-async def get_subject_by_id(subject_id: str) -> Optional[dict]:
+async def get_subject_by_id(subject_id: str, teacher_id: str) -> Optional[dict]:
     db = get_database()
-    subject = await db.subjects.find_one({"_id": ObjectId(subject_id)})
+    try:
+        subject = await db.subjects.find_one(
+            {"_id": ObjectId(subject_id), "teacher_id": teacher_id}
+        )
+    except Exception:
+        return None
     return serialize_id(subject) if subject else None
 
 
-async def update_subject(subject_id: str, data: dict) -> Optional[dict]:
+async def update_subject(subject_id: str, data: dict, teacher_id: str) -> Optional[dict]:
     db = get_database()
     update_data = {k: v for k, v in data.items() if v is not None}
     if not update_data:
-        return await get_subject_by_id(subject_id)
+        return await get_subject_by_id(subject_id, teacher_id)
 
-    result = await db.subjects.find_one_and_update(
-        {"_id": ObjectId(subject_id)},
-        {"$set": update_data},
-        return_document=True,
-    )
+    if "code" in update_data and update_data.get("code"):
+        existing = await db.subjects.find_one(
+            {"teacher_id": teacher_id, "code": update_data["code"], "_id": {"$ne": ObjectId(subject_id)}}
+        )
+        if existing:
+            raise ValueError("Subject code already exists")
+
+    try:
+        result = await db.subjects.find_one_and_update(
+            {"_id": ObjectId(subject_id), "teacher_id": teacher_id},
+            {"$set": update_data},
+            return_document=True,
+        )
+    except Exception:
+        return None
     return serialize_id(result) if result else None
 
 
-async def delete_subject(subject_id: str) -> bool:
+async def delete_subject(subject_id: str, teacher_id: str) -> bool:
     db = get_database()
-    result = await db.subjects.delete_one({"_id": ObjectId(subject_id)})
+    try:
+        result = await db.subjects.delete_one(
+            {"_id": ObjectId(subject_id), "teacher_id": teacher_id}
+        )
+    except Exception:
+        return False
     return result.deleted_count > 0

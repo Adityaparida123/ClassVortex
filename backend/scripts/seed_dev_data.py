@@ -71,9 +71,9 @@ async def seed():
     ]
     class_ids = []
     for spec in classes_spec:
-        cls = await db.classes.find_one({"name": spec["name"], "semester": spec["semester"]})
+        cls = await db.classes.find_one({"name": spec["name"], "semester": spec["semester"], "teacher_id": teacher_id})
         if not cls:
-            doc = {**spec, "is_active": True, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)}
+            doc = {**spec, "teacher_id": teacher_id, "is_active": True, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)}
             res = await db.classes.insert_one(doc)
             class_ids.append(str(res.inserted_id))
             print(f"  Created class: {spec['name']}")
@@ -93,7 +93,7 @@ async def seed():
     subject_ids = []
     for s in subjects_spec:
         c_id = class_ids[s["class_index"]]
-        sub = await db.subjects.find_one({"code": s["code"]})
+        sub = await db.subjects.find_one({"code": s["code"], "teacher_id": teacher_id})
         if not sub:
             doc = {
                 "name": s["name"],
@@ -135,7 +135,7 @@ async def seed():
         c_id = class_ids[0] if i < 10 else class_ids[1]
         sem = 3 if i < 10 else 5
         sec = "A" if i < 10 else "B"
-        st = await db.students.find_one({"roll_number": roll})
+        st = await db.students.find_one({"roll_number": roll, "teacher_id": teacher_id})
         if not st:
             email = f"{name.lower().replace(' ', '.')}@example.com"
             doc = {
@@ -143,6 +143,7 @@ async def seed():
                 "name": name,
                 "email": email,
                 "class_id": c_id,
+                "teacher_id": teacher_id,
                 "semester": sem,
                 "section": sec,
                 "is_active": True,
@@ -181,6 +182,7 @@ async def seed():
                 rec = {
                     "session_id": sess_id,
                     "student_id": st_id,
+                    "teacher_id": teacher_id,
                     "status": status,
                     "marked_at": datetime.now(timezone.utc),
                 }

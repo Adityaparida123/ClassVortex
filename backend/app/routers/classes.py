@@ -11,7 +11,7 @@ async def create_class(
     request: ClassCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    cls = await class_service.create_class(request.model_dump())
+    cls = await class_service.create_class(request.model_dump(), str(current_user["_id"]))
     return {"success": True, "data": cls}
 
 
@@ -21,7 +21,7 @@ async def list_classes(
     limit: int = Query(20, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
-    classes, total = await class_service.get_classes(page=page, limit=limit)
+    classes, total = await class_service.get_classes(str(current_user["_id"]), page=page, limit=limit)
     return {
         "success": True,
         "data": classes,
@@ -34,7 +34,7 @@ async def get_class(
     class_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    cls = await class_service.get_class_by_id(class_id)
+    cls = await class_service.get_class_by_id(class_id, str(current_user["_id"]))
     if not cls:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     return {"success": True, "data": cls}
@@ -46,7 +46,9 @@ async def update_class(
     request: ClassUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    cls = await class_service.update_class(class_id, request.model_dump(exclude_unset=True))
+    cls = await class_service.update_class(
+        class_id, request.model_dump(exclude_unset=True), str(current_user["_id"])
+    )
     if not cls:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     return {"success": True, "data": cls}
@@ -57,7 +59,7 @@ async def delete_class(
     class_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    deleted = await class_service.delete_class(class_id)
+    deleted = await class_service.delete_class(class_id, str(current_user["_id"]))
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     return {"success": True, "data": {"message": "Class deleted"}}

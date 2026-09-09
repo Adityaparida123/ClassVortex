@@ -54,15 +54,22 @@ async def create_indexes():
         return
     try:
         await db.users.create_index("email", unique=True)
-        await db.students.create_index("roll_number", unique=True)
+        await db.students.create_index(
+            [("teacher_id", 1), ("roll_number", 1)], unique=True
+        )
         await db.students.create_index("class_id")
+        await db.students.create_index("teacher_id")
         await db.classes.create_index("name")
+        await db.classes.create_index("teacher_id")
         await db.subjects.create_index("name")
+        await db.subjects.create_index("teacher_id")
         await db.attendance_sessions.create_index("date")
         await db.attendance_sessions.create_index("class_id")
         await db.attendance_sessions.create_index("subject_id")
+        await db.attendance_sessions.create_index("teacher_id")
         await db.attendance_records.create_index("session_id")
         await db.attendance_records.create_index("student_id")
+        await db.attendance_records.create_index("teacher_id")
     except Exception as e:
         logger.error(f"Failed to create MongoDB indexes: {e.__class__.__name__}: {e}")
         raise

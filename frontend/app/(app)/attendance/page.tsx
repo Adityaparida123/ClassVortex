@@ -9,12 +9,11 @@ import Badge from "@/components/ui/Badge";
 import Icon from "@/components/ui/Icon";
 import AttendanceRow from "@/components/attendance/AttendanceRow";
 import SubjectForm from "@/components/attendance/SubjectForm";
-import ClassForm from "@/components/classes/ClassForm";
 import { api, ApiError } from "@/lib/api";
 import { useAttendance } from "@/hooks/useAttendance";
 import { useAuth } from "@/hooks/useAuth";
 import type { Student } from "@/types/student";
-import type { ClassItem, ClassCreate, ClassUpdate, Subject, SubjectCreate } from "@/types/class";
+import type { ClassItem, Subject, SubjectCreate } from "@/types/class";
 import { todayISO, formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUSES } from "@/lib/constants";
 import { staggerIn, successPop } from "@/animations/index";
@@ -28,7 +27,6 @@ export default function AttendancePage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [step, setStep] = useState<Step>("setup");
   const [setupError, setSetupError] = useState<string | null>(null);
-  const [showClassForm, setShowClassForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -70,15 +68,6 @@ export default function AttendancePage() {
   const selectedSubject = subjects.find((s) => s.id === subjectId) ?? null;
   const classId = selectedSubject?.class_id ?? "";
   const subjectTargetClassId = selectedSubject?.class_id || preferredClassId || classes[0]?.id || "";
-
-  const handleCreateClass = async (data: ClassCreate | ClassUpdate) => {
-    const cls = await api.createClass(data as ClassCreate);
-    const next = [...classes, cls];
-    setClasses(next);
-    setSubjectId("");
-    setPreferredClassId(cls.id);
-    setCreateFeedback(`Class "${cls.name}" created.`);
-  };
 
   const handleCreateSubject = async (data: SubjectCreate) => {
     const subj = await api.createSubject(data);
@@ -165,8 +154,8 @@ export default function AttendancePage() {
           <div className="mb-4">
             <div className="mb-1 flex items-center justify-between gap-2">
               <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
-              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowClassForm(true)}>
-                <Icon name="plus" size={14} /> Create Class
+              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={!subjectTargetClassId}>
+                <Icon name="plus" size={14} /> Create Subject
               </Button>
             </div>
             <select id="att-subject" className="input-base" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
@@ -176,11 +165,6 @@ export default function AttendancePage() {
                 <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
               ))}
             </select>
-            <div className="mt-2 flex justify-end">
-              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={!subjectTargetClassId}>
-                <Icon name="plus" size={14} /> Create Subject
-              </Button>
-            </div>
           </div>
 
           <Button className="mt-6 w-full" size="lg" onClick={startSession}>
@@ -244,12 +228,6 @@ export default function AttendancePage() {
       ) : (
         <Loading message="Preparing session..." />
       )}
-
-      <ClassForm
-        open={showClassForm}
-        onClose={() => setShowClassForm(false)}
-        onSubmit={handleCreateClass}
-      />
 
       <SubjectForm
         open={showSubjectForm}

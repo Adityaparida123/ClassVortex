@@ -5,12 +5,12 @@ from app.database import get_database
 from app.utils.helpers import serialize_id
 
 
-async def get_daily_report(class_id: Optional[str] = None, date: Optional[str] = None) -> dict:
+async def get_daily_report(teacher_id: str, class_id: Optional[str] = None, date: Optional[str] = None) -> dict:
     db = get_database()
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    query = {"date": date}
+    query = {"date": date, "teacher_id": teacher_id}
     if class_id:
         query["class_id"] = class_id
 
@@ -23,7 +23,9 @@ async def get_daily_report(class_id: Optional[str] = None, date: Optional[str] =
         return {"date": date, "sessions": [], "total_present": 0, "total_absent": 0}
 
     records = []
-    async for record in db.attendance_records.find({"session_id": {"$in": session_ids}}):
+    async for record in db.attendance_records.find(
+        {"session_id": {"$in": session_ids}, "teacher_id": teacher_id}
+    ):
         records.append(serialize_id(record))
 
     total_present = sum(1 for r in records if r["status"] == "present")
@@ -38,12 +40,12 @@ async def get_daily_report(class_id: Optional[str] = None, date: Optional[str] =
     }
 
 
-async def get_monthly_report(class_id: Optional[str] = None, month: Optional[str] = None) -> dict:
+async def get_monthly_report(teacher_id: str, class_id: Optional[str] = None, month: Optional[str] = None) -> dict:
     db = get_database()
     if not month:
         month = datetime.now().strftime("%Y-%m")
 
-    query = {"date": {"$regex": f"^{month}"}}
+    query = {"date": {"$regex": f"^{month}"}, "teacher_id": teacher_id}
     if class_id:
         query["class_id"] = class_id
 
@@ -56,7 +58,9 @@ async def get_monthly_report(class_id: Optional[str] = None, month: Optional[str
         return {"month": month, "total_sessions": 0, "student_summaries": []}
 
     records = []
-    async for record in db.attendance_records.find({"session_id": {"$in": session_ids}}):
+    async for record in db.attendance_records.find(
+        {"session_id": {"$in": session_ids}, "teacher_id": teacher_id}
+    ):
         records.append(serialize_id(record))
 
     student_stats = {}
@@ -89,14 +93,21 @@ async def get_monthly_report(class_id: Optional[str] = None, month: Optional[str
     }
 
 
-async def get_student_report(student_id: str) -> dict:
+async def get_student_report(teacher_id: str, student_id: str) -> dict:
     db = get_database()
-    student = await db.students.find_one({"_id": ObjectId(student_id)})
+    try:
+        student = await db.students.find_one(
+            {"_id": ObjectId(student_id), "teacher_id": teacher_id}
+        )
+    except Exception:
+        return None
     if not student:
         return None
 
     records = []
-    async for record in db.attendance_records.find({"student_id": student_id}):
+    async for record in db.attendance_records.find(
+        {"student_id": student_id, "teacher_id": teacher_id}
+    ):
         records.append(serialize_id(record))
 
     total = len(records)
@@ -119,21 +130,30 @@ async def get_student_report(student_id: str) -> dict:
     }
 
 
-async def get_class_report(class_id: str) -> dict:
+async def get_class_report(teacher_id: str, class_id: str) -> dict:
     db = get_database()
-    cls = await db.classes.find_one({"_id": ObjectId(class_id)})
+    try:
+        cls = await db.classes.find_one(
+            {"_id": ObjectId(class_id), "teacher_id": teacher_id}
+        )
+    except Exception:
+        return None
     if not cls:
         return None
 
-    total_sessions = await db.attendance_sessions.count_documents({"class_id": class_id})
+    total_sessions = await db.attendance_sessions.count_documents(
+        {"class_id": class_id, "teacher_id": teacher_id}
+    )
 
     students = []
-    async for student in db.students.find({"class_id": class_id, "is_active": True}):
+    async for student in db.students.find(
+        {"class_id": class_id, "teacher_id": teacher_id, "is_active": True}
+    ):
         students.append(serialize_id(student))
 
     student_summaries = []
     for student in students:
-        summary = await get_student_summary(student["id"])
+        summary = await get_student_summary(teacher_id, student["id"])
         summary["student_name"] = student["name"]
         summary["roll_number"] = student["roll_number"]
         student_summaries.append(summary)
@@ -146,9 +166,10 @@ async def get_class_report(class_id: str) -> dict:
     }
 
 
-async def get_student_summary(student_id: str) -> dict:
+async def get_student_summary(teacher_id: str, student_id: str) -> dict:
     db = get_database()
-    total = await db.attendance_records.count_documents({"student_id": student_id})
+    record_filter = {"student_id": student_id, "teacher_id": teacher_id}
+    total = await db.attendance_records.count_documents(record_filter)
     if total == 0:
         return {
             "student_id": student_id,
@@ -161,16 +182,16 @@ async def get_student_summary(student_id: str) -> dict:
         }
 
     present = await db.attendance_records.count_documents(
-        {"student_id": student_id, "status": "present"}
+        {**record_filter, "status": "present"}
     )
     absent = await db.attendance_records.count_documents(
-        {"student_id": student_id, "status": "absent"}
+        {**record_filter, "status": "absent"}
     )
     late = await db.attendance_records.count_documents(
-        {"student_id": student_id, "status": "late"}
+        {**record_filter, "status": "late"}
     )
     excused = await db.attendance_records.count_documents(
-        {"student_id": student_id, "status": "excused"}
+        {**record_filter, "status": "excused"}
     )
 
     percentage = (present / total * 100) if total > 0 else 0.0

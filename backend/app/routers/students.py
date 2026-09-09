@@ -2,9 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Optional
 from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
 from app.services import student_service
+from app.services import class_service
 from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1/students", tags=["Students"])
+
+
+async def _ensure_class_owned(class_id: str, teacher_id: str):
+    cls = await class_service.get_class_by_id(class_id, teacher_id)
+    if not cls:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
 
 @router.post("", response_model=dict)
@@ -12,8 +19,9 @@ async def create_student(
     request: StudentCreate,
     current_user: dict = Depends(get_current_user),
 ):
+    await _ensure_class_owned(request.class_id, str(current_user["_id"]))
     try:
-        student = await student_service.create_student(request.model_dump())
+        student = await student_service.create_student(request.model_dump(), str(current_user["_id"]))
         return {"success": True, "data": student}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -30,7 +38,7 @@ async def list_students(
     current_user: dict = Depends(get_current_user),
 ):
     students, total = await student_service.get_students(
-        page=page, limit=limit, class_id=class_id,
+        str(current_user["_id"]), page=page, limit=limit, class_id=class_id,
         semester=semester, section=section, search=search,
     )
     return {
@@ -45,7 +53,7 @@ async def get_student(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    student = await student_service.get_student_by_id(student_id)
+    student = await student_service.get_student_by_id(student_id, str(current_user["_id"]))
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return {"success": True, "data": student}
@@ -57,7 +65,10 @@ async def update_student(
     request: StudentUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    student = await student_service.update_student(student_id, request.model_dump(exclude_unset=True))
+    teacher_id = str(current_user["_id"])
+    if request.class_id:
+        await _ensure_class_owned(request.class_id, teacher_id)
+    student = await student_service.update_student(student_id, request.model_dump(exclude_unset=True), teacher_id)
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return {"success": True, "data": student}
@@ -68,7 +79,7 @@ async def delete_student(
     student_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    deleted = await student_service.delete_student(student_id)
+    deleted = await student_service.delete_student(student_id, str(current_user["_id"]))
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
     return {"success": True, "data": {"message": "Student deleted"}}

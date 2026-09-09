@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
-import { TAGLINE, DEMO_MODE, DEMO_ACCOUNT } from "@/lib/constants";
+import { TAGLINE, DEMO_ACCOUNT } from "@/lib/constants";
 import { animateIn, continuousRotate } from "@/animations/index";
 import { prefersReducedMotion } from "@/lib/utils";
 import Icon from "@/components/ui/Icon";
@@ -246,7 +246,7 @@ export default function LoginPage() {
             )}
           </button>
 
-          {DEMO_MODE && mode === "signin" && (
+          {mode === "signin" && (
             <>
               <div className="my-5 flex items-center gap-3">
                 <div className="h-px flex-1 bg-[var(--border)]" />
@@ -261,7 +261,7 @@ export default function LoginPage() {
                   Demo Account
                 </h3>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  Use these credentials to explore AttendVortex with sample data.
+                  Use these credentials to explore the AttendVortex demo.
                 </p>
 
                 {/* Email row */}
@@ -291,7 +291,7 @@ export default function LoginPage() {
                       ) : (
                         <span className="flex items-center gap-1">
                           <Icon name="copy" size={14} />
-                          Copy
+                          Copy Email
                         </span>
                       )}
                     </button>
@@ -325,7 +325,7 @@ export default function LoginPage() {
                       ) : (
                         <span className="flex items-center gap-1">
                           <Icon name="copy" size={14} />
-                          Copy
+                          Copy Password
                         </span>
                       )}
                     </button>
@@ -335,7 +335,7 @@ export default function LoginPage() {
             </>
           )}
 
-          <div className={DEMO_MODE && mode === "signin" ? "mt-5 text-center" : "mt-5 text-center"}>
+          <div className="mt-5 text-center">
             <button
               type="button"
               onClick={toggleMode}

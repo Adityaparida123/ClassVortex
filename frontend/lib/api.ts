@@ -105,6 +105,8 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+const DEFAULT_TIMEOUT_MS = 30000;
+
 async function requestRaw<T>(
   path: string,
   options: {
@@ -112,9 +114,10 @@ async function requestRaw<T>(
     body?: unknown;
     auth?: boolean;
     headers?: Record<string, string>;
+    timeoutMs?: number;
   } = {}
 ): Promise<T> {
-  const { method = "GET", body, auth = true, headers = {} } = options;
+  const { method = "GET", body, auth = true, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
   const baseUrl = getBaseUrl();
 
   if (!baseUrl) {
@@ -140,11 +143,22 @@ async function requestRaw<T>(
     init.body = JSON.stringify(body);
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}${path}`, init);
+    res = await fetch(`${baseUrl}${path}`, { ...init, signal: controller.signal });
   } catch {
+    if (controller.signal.aborted) {
+      throw new ApiError(
+        "The request timed out. The server did not respond in time. Please try again.",
+        0
+      );
+    }
     throw new ApiError("Network error. Please check your connection.", 0);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const contentType = res.headers.get("content-type") || "";

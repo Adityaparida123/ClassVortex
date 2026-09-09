@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import PageContainer from "@/components/layout/PageContainer";import Button from "@/components/ui/Button";
+import PageContainer from "@/components/layout/PageContainer";
+import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
+import Icon from "@/components/ui/Icon";
 import AttendanceRow from "@/components/attendance/AttendanceRow";
+import SubjectForm from "@/components/attendance/SubjectForm";
+import ClassForm from "@/components/classes/ClassForm";
 import { api, ApiError } from "@/lib/api";
 import { useAttendance } from "@/hooks/useAttendance";
+import { useAuth } from "@/hooks/useAuth";
 import type { Student } from "@/types/student";
-import type { ClassItem } from "@/types/class";
-import type { Subject } from "@/types/class";
+import type { ClassItem, ClassCreate, ClassUpdate, Subject, SubjectCreate } from "@/types/class";
 import { todayISO, formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUSES } from "@/lib/constants";
 import { staggerIn, successPop } from "@/animations/index";
@@ -24,8 +28,13 @@ export default function AttendancePage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [step, setStep] = useState<Step>("setup");
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [showClassForm, setShowClassForm] = useState(false);
+  const [showSubjectForm, setShowSubjectForm] = useState(false);
+  const [createFeedback, setCreateFeedback] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const saveRef = useRef<HTMLDivElement>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
 
   const {
     session,
@@ -63,6 +72,24 @@ export default function AttendancePage() {
     }).catch(() => setSubjects([]));
   }, [classId]);
 
+  const handleCreateClass = async (data: ClassCreate | ClassUpdate) => {
+    const cls = await api.createClass(data as ClassCreate);
+    const next = [...classes, cls];
+    setClasses(next);
+    setSubjects([]);
+    setSubjectId("");
+    setClassId(cls.id);
+    setCreateFeedback(`Class "${cls.name}" created.`);
+  };
+
+  const handleCreateSubject = async (data: SubjectCreate) => {
+    const subj = await api.createSubject(data);
+    const next = [...subjects, subj];
+    setSubjects(next);
+    setSubjectId(subj.id);
+    setCreateFeedback(`Subject "${subj.name}" created.`);
+  };
+
   const startSession = async () => {
     if (!classId || !subjectId) {
       setSetupError("Please select both a class and a subject.");
@@ -99,6 +126,12 @@ export default function AttendancePage() {
     }
   }, [success]);
 
+  useEffect(() => {
+    if (createFeedback && feedbackRef.current) {
+      successPop(feedbackRef.current, { color: "rgba(52,211,153,0.18)" });
+    }
+  }, [createFeedback]);
+
   const handleReset = () => {
     reset();
     setStep("setup");
@@ -125,21 +158,42 @@ export default function AttendancePage() {
             </div>
           )}
 
-          <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-class">Class</label>
-          <select id="att-class" className="input-base mb-4" value={classId} onChange={(e) => setClassId(e.target.value)}>
-            {classes.length === 0 && <option value="">No classes available</option>}
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>{c.name} · Sem {c.semester} · {c.section}</option>
-            ))}
-          </select>
+          {createFeedback && (
+            <div ref={feedbackRef} className="mb-4 rounded-xl border border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.1)] px-4 py-3 text-sm text-[var(--success)]" role="status">
+              {createFeedback}
+            </div>
+          )}
 
-          <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
-          <select id="att-subject" className="input-base mb-2" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-            {subjects.length === 0 && <option value="">No subjects for this class</option>}
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
-            ))}
-          </select>
+          <div className="mb-4">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-class">Class</label>
+              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowClassForm(true)}>
+                <Icon name="plus" size={14} /> Create Class
+              </Button>
+            </div>
+            <select id="att-class" className="input-base" value={classId} onChange={(e) => setClassId(e.target.value)}>
+              {classes.length === 0 && <option value="">No classes available</option>}
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} · Sem {c.semester} · {c.section}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mb-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
+              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={!classId}>
+                <Icon name="plus" size={14} /> Create Subject
+              </Button>
+            </div>
+            <select id="att-subject" className="input-base" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} disabled={!classId}>
+              {!classId && <option value="">Select a class first</option>}
+              {classId && subjects.length === 0 && <option value="">No subjects for this class</option>}
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+              ))}
+            </select>
+          </div>
 
           <Button className="mt-6 w-full" size="lg" onClick={startSession}>
             Start Attendance
@@ -202,6 +256,20 @@ export default function AttendancePage() {
       ) : (
         <Loading message="Preparing session..." />
       )}
+
+      <ClassForm
+        open={showClassForm}
+        onClose={() => setShowClassForm(false)}
+        onSubmit={handleCreateClass}
+      />
+
+      <SubjectForm
+        open={showSubjectForm}
+        onClose={() => setShowSubjectForm(false)}
+        classId={classId}
+        teacherId={user?.id ?? ""}
+        onSubmit={handleCreateSubject}
+      />
     </PageContainer>
   );
 }

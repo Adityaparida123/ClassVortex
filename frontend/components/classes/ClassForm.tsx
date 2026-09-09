@@ -65,7 +65,7 @@ export default function ClassForm({ open, onClose, editing, onSubmit }: ClassFor
           </div>
         )}
         <div>
-          <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="class-name">Class Name</label>
+          <label className="mb-1 block text-sm font-medium text-[var(--text-muted)]" htmlFor="class-name">Course Name</label>
           <input id="class-name" className="input-base" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Computer Science" />
         </div>
         <div className="grid grid-cols-3 gap-4">

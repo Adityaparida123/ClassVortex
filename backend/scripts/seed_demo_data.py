@@ -1,7 +1,17 @@
-"""Demo data seed script for AttendVortex.
+"""Demo data seed script for AttendVortex (self-healing + idempotent).
 
-Safe to run multiple times — detects existing demo data and skips creation.
-Never deletes non-demo production data.
+Guarantees the demo account owns a complete, correctly-owned demo dataset:
+
+  - demo teacher account (created if missing)
+  - at least 1 demo class owned by the demo teacher
+  - the DEMO101 subject owned by the demo teacher and attached to the demo class
+  - all 58 demo students owned by the demo teacher and attached to the demo class
+  - deterministic attendance sessions + records for the demo class/subject
+
+Unlike the legacy script this is *self-healing*: every run re-verifies ownership
+and repairs any demo-domain records that were created under the wrong user or
+class. Non-demo (personal) data is NEVER touched, and existing demo data is
+NEVER duplicated (the script is idempotent).
 
 Usage:
     cd backend
@@ -21,11 +31,15 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 
 from app.database import get_database, connect_to_mongo, close_mongo_connection
-from app.services.auth_service import register_user, authenticate_user
-from app.services.student_service import create_student, get_students_by_class
-from app.services.class_service import create_class, get_classes
-from app.services.subject_service import create_subject, get_subjects
-from app.services.attendance_service import create_session, bulk_create_records, get_student_summary
+from app.core.security import hash_password
+from app.services.student_service import create_student
+from app.services.class_service import create_class
+from app.services.subject_service import create_subject
+from app.services.attendance_service import (
+    create_session,
+    bulk_create_records,
+    get_student_summary,
+)
 
 
 # ----- Demo data -----
@@ -113,211 +127,333 @@ DEMO_STUDENTS = [
 # Derived emails: roll_number@demo.attendvortex.local
 DEMO_STUDENT_EMAILS = [f"{roll}@demo.attendvortex.local" for _, roll, _ in DEMO_STUDENTS]
 
+DEMO_EMAIL_DOMAIN = "@demo.attendvortex.local"
 
-async def _get_demo_teacher() -> dict:
-    """Get the demo teacher by email. Creates if not exists."""
-    db = get_database()
+
+def _as_str(value) -> str:
+    return "" if value is None else str(value)
+
+
+def demo_class_id(demo_class) -> str:
+    return _as_str(demo_class.get("_id") or demo_class.get("id") or "")
+
+
+def _is_demo_domain(email) -> bool:
+    return (email or "").lower().endswith(DEMO_EMAIL_DOMAIN)
+
+
+# ----- Helpers -----
+
+
+async def _resolve_demo_teacher(db) -> dict:
+    """Get the demo teacher document by email. Creates it if missing."""
     existing = await db.users.find_one({"email": DEMO_TEACHER["email"]})
     if existing:
         return existing
-    user = await register_user(
-        name=DEMO_TEACHER["name"],
-        email=DEMO_TEACHER["email"],
-        password=DEMO_TEACHER["password"],
-        role=DEMO_TEACHER["role"],
+
+    user_data = {
+        "name": DEMO_TEACHER["name"],
+        "email": DEMO_TEACHER["email"],
+        "password_hash": hash_password(DEMO_TEACHER["password"]),
+        "role": DEMO_TEACHER["role"],
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc),
+    }
+    result = await db.users.insert_one(user_data)
+    user_data["_id"] = result.inserted_id
+    return user_data
+
+
+async def _ensure_demo_class(db, demo_uid: str) -> dict:
+    """Ensure a class owned by the demo teacher exists.
+
+    Prefers an existing demo-owned class. Adopts a mis-owned class only if it is
+    clearly the demo class (its students are ALL demo-domain students, or it has
+    no students at all). Otherwise creates a fresh demo class.
+    """
+    demo_uid = _as_str(demo_uid)
+
+    # 1. Existing demo-owned class -> keep
+    existing = await db.classes.find_one(
+        {"name": DEMO_CLASS["name"], "section": DEMO_CLASS["section"], "teacher_id": demo_uid}
     )
-    return user
-
-
-async def _ensure_demo_class(demo_teacher: dict) -> dict:
-    """Create the demo class if it does not already exist."""
-    db = get_database()
-    teacher_id = demo_teacher.get("_id") or demo_teacher.get("id") or ""
-    existing = await db.classes.find_one({
-        "name": DEMO_CLASS["name"],
-        "section": DEMO_CLASS["section"],
-        "teacher_id": str(teacher_id),
-    })
     if existing:
         return existing
-    cls = await create_class({
-        "name": DEMO_CLASS["name"],
-        "semester": DEMO_CLASS["semester"],
-        "section": DEMO_CLASS["section"],
-        "academic_year": DEMO_CLASS["academic_year"],
-        "teacher_id": str(teacher_id),
-    }, teacher_id=str(teacher_id))
+
+    # 2. Candidate class (same name/section) that is not demo-owned -> adopt only if safe
+    cursor = db.classes.find({"name": DEMO_CLASS["name"], "section": DEMO_CLASS["section"]})
+    async for cand in cursor:
+        if _as_str(cand.get("teacher_id")) == demo_uid:
+            return cand
+        class_students = (
+            await db.students.find({"class_id": _as_str(cand["_id"])}).to_list(length=None)
+        )
+        if all(_is_demo_domain(s.get("email")) for s in class_students):
+            await db.classes.update_one({"_id": cand["_id"]}, {"$set": {"teacher_id": demo_uid}})
+            return cand
+
+    # 3. Create new demo class
+    cls = await create_class(
+        {
+            "name": DEMO_CLASS["name"],
+            "semester": DEMO_CLASS["semester"],
+            "section": DEMO_CLASS["section"],
+            "academic_year": DEMO_CLASS["academic_year"],
+        },
+        teacher_id=demo_uid,
+    )
     return cls
 
 
-async def _ensure_demo_subject(demo_teacher: dict, demo_class: dict) -> dict:
-    """Create the demo subject if it does not already exist (keyed by code + teacher)."""
-    db = get_database()
-    teacher_id = demo_teacher.get("_id") or demo_teacher.get("id") or ""
-    existing = await db.subjects.find_one({"code": DEMO_SUBJECT["code"], "teacher_id": str(teacher_id)})
+async def _ensure_demo_subject(db, demo_uid: str, demo_class_id) -> dict:
+    """Ensure DEMO101 is owned by the demo teacher and attached to the demo class."""
+    demo_uid = _as_str(demo_uid)
+    demo_class_id = _as_str(demo_class_id)
+
+    # 1. Existing subject for the demo teacher -> fix class if needed
+    existing = await db.subjects.find_one({"code": DEMO_SUBJECT["code"], "teacher_id": demo_uid})
     if existing:
+        if _as_str(existing.get("class_id")) != demo_class_id:
+            await db.subjects.update_one(
+                {"_id": existing["_id"]}, {"$set": {"class_id": demo_class_id}}
+            )
         return existing
-    subject = await create_subject({
-        "name": DEMO_SUBJECT["name"],
-        "code": DEMO_SUBJECT["code"],
-        "class_id": str(demo_class.get("_id") or demo_class.get("id") or ""),
-        "teacher_id": str(teacher_id),
-    }, teacher_id=str(teacher_id))
+
+    # 2. Orphaned DEMO101 pointing at the demo class -> adopt
+    orphan = await db.subjects.find_one({"code": DEMO_SUBJECT["code"], "class_id": demo_class_id})
+    if orphan:
+        await db.subjects.update_one({"_id": orphan["_id"]}, {"$set": {"teacher_id": demo_uid}})
+        return orphan
+
+    # 3. Create new
+    subject = await create_subject(
+        {
+            "name": DEMO_SUBJECT["name"],
+            "code": DEMO_SUBJECT["code"],
+            "class_id": demo_class_id,
+        },
+        teacher_id=demo_uid,
+    )
     return subject
 
 
-async def _ensure_demo_students(demo_teacher: dict, demo_class: dict) -> list:
-    """Create all 58 demo students if they do not already exist (scoped to the demo teacher)."""
-    db = get_database()
-    teacher_id = str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
-    created = []
+async def _ensure_demo_students(db, demo_uid: str, demo_class_id) -> list:
+    """Ensure all 58 demo students exist, owned by the demo teacher + demo class.
+
+    Self-heals mis-owned demo students (e.g., created under the personal teacher
+    before ownership existed). Duplicate demo records that would violate the
+    (teacher_id, roll_number) unique index are cleaned up. Non-demo students are
+    never touched.
+    """
+    demo_uid = _as_str(demo_uid)
+    demo_class_id = _as_str(demo_class_id)
+    owned_ids = []
 
     for idx, (_, roll_number, name) in enumerate(DEMO_STUDENTS):
-        # Skip if a student with this roll_number already exists for this teacher
-        existing = await db.students.find_one({"teacher_id": teacher_id, "roll_number": roll_number})
-        if existing:
-            created.append(existing)
+        email = DEMO_STUDENT_EMAILS[idx]
+
+        docs = []
+        cursor = db.students.find({"roll_number": roll_number})
+        async for doc in cursor:
+            docs.append(doc)
+
+        demo_docs = [d for d in docs if _is_demo_domain(d.get("email"))]
+
+        # --- No demo record for this roll -> create it ---
+        if not demo_docs:
+            try:
+                student = await create_student(
+                    {
+                        "roll_number": str(roll_number),
+                        "name": name,
+                        "email": email,
+                        "class_id": demo_class_id,
+                        "semester": DEMO_CLASS["semester"],
+                        "section": DEMO_CLASS["section"],
+                    },
+                    teacher_id=demo_uid,
+                )
+                owned_ids.append(str(student["id"]))
+            except ValueError:
+                existing = await db.students.find_one(
+                    {"teacher_id": demo_uid, "roll_number": str(roll_number)}
+                )
+                if existing:
+                    await db.students.update_one(
+                        {"_id": existing["_id"]}, {"$set": {"class_id": demo_class_id}}
+                    )
+                    owned_ids.append(str(existing["_id"]))
             continue
 
-        email = DEMO_STUDENT_EMAILS[idx]
-        student = await create_student({
-            "roll_number": str(roll_number),
-            "name": name,
-            "email": email,
-            "class_id": str(demo_class.get("_id") or demo_class.get("id") or ""),
-            "semester": 3,
-            "section": "A",
-        }, teacher_id=teacher_id)
-        created.append(student)
+        # --- Prefer a copy already owned by the demo teacher, else first demo doc ---
+        canonical = next(
+            (d for d in demo_docs if _as_str(d.get("teacher_id")) == demo_uid), demo_docs[0]
+        )
+        curr_owner = _as_str(canonical.get("teacher_id"))
 
-    return created
+        if curr_owner != demo_uid:
+            # Moving ownership may collide with an existing demo-owned copy of this roll
+            existing_demo = await db.students.find_one(
+                {"teacher_id": demo_uid, "roll_number": str(roll_number)}
+            )
+            if existing_demo:
+                await db.students.delete_one({"_id": canonical["_id"]})
+                canonical = existing_demo
+            else:
+                await db.students.update_one(
+                    {"_id": canonical["_id"]}, {"$set": {"teacher_id": demo_uid}}
+                )
 
-
-async def _ensure_demo_attendance(demo_teacher: dict, demo_class: dict, demo_subject: dict) -> None:
-    """Create 7 deterministic attendance sessions with realistic percentages.
-
-    Distribution (58 students × 7 sessions = 406 total slots):
-      - ~20 students at ~95% attendance  (≈ 133/140 present)
-      - ~30 students at ~85% attendance  (≈ 179/210 present)
-      - ~ 8 students at ~65% attendance  (≈  36/56 present)
-      - Overall: ~348/406 = ~85.7% present
-    """
-    from datetime import datetime as _datetime, timedelta as _timedelta, timezone as _tz
-
-    # Get database connection
-    db = get_database()
-
-    # Create 7 sessions on recent past dates
-    base_date = _datetime.now(_tz.utc).date()
-    session_dates = []
-    for i in range(7):
-        d = base_date - _timedelta(days=i)
-        session_dates.append(d.isoformat())
-
-    # Get teacher id - try multiple fields
-    teacher_id = str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
-    demo_class_id = str(demo_class.get("_id") or demo_class.get("id") or "")
-    demo_subject_id = str(demo_subject.get("_id") or demo_subject.get("id") or "")
-
-    # Create sessions and bulk insert attendance records
-    for s_idx, session_date in enumerate(session_dates):
-        existing_session = await db.attendance_sessions.find_one({
+        updates = {
             "class_id": demo_class_id,
-            "subject_id": demo_subject_id,
-            "date": session_date,
-            "teacher_id": teacher_id,
-        })
+            "semester": DEMO_CLASS["semester"],
+            "section": DEMO_CLASS["section"],
+        }
+        if (canonical.get("email") or "").lower() != email.lower():
+            updates["email"] = email
+        await db.students.update_one({"_id": canonical["_id"]}, {"$set": updates})
+        owned_ids.append(str(canonical["_id"]))
+
+        # --- Remove leftover duplicate demo records for the same roll ---
+        for dup in demo_docs:
+            if str(dup.get("_id")) != str(canonical.get("_id")):
+                await db.students.delete_one({"_id": dup["_id"]})
+
+    return owned_ids
+
+
+async def _repair_demo_session_ownership(db, demo_uid: str, demo_class_id, demo_subject_id) -> int:
+    """Re-stamp any attendance sessions/records that reference demo entities but
+    were created under the wrong owner. Returns number of sessions repaired."""
+    demo_uid = _as_str(demo_uid)
+    demo_class_id = _as_str(demo_class_id)
+    demo_subject_id = _as_str(demo_subject_id)
+    repaired = 0
+
+    cursor = db.attendance_sessions.find(
+        {
+            "$or": [
+                {"class_id": demo_class_id},
+                {"subject_id": demo_subject_id},
+            ]
+        }
+    )
+    async for session in cursor:
+        if _as_str(session.get("teacher_id")) != demo_uid:
+            await db.attendance_sessions.update_one(
+                {"_id": session["_id"]}, {"$set": {"teacher_id": demo_uid}}
+            )
+            repaired += 1
+        # Re-stamp records of repaired/owned sessions
+        await db.attendance_records.update_many(
+            {"session_id": _as_str(session["_id"])}, {"$set": {"teacher_id": demo_uid}}
+        )
+    return repaired
+
+
+async def _ensure_demo_attendance(db, demo_uid: str, demo_class, demo_subject) -> int:
+    """Create deterministic attendance sessions + records for the demo class.
+
+    Session dates are anchored to the demo class creation date so the seed is
+    idempotent no matter when it is re-run. Returns the number of sessions.
+    """
+    demo_uid = _as_str(demo_uid)
+    demo_class_str = demo_class_id(demo_class)
+    demo_subject_id = _as_str(demo_subject.get("_id") or demo_subject.get("id") or "")
+
+    await _repair_demo_session_ownership(db, demo_uid, demo_class_str, demo_subject_id)
+
+    created_at = demo_class.get("created_at") or datetime.now(timezone.utc)
+    if isinstance(created_at, datetime):
+        base_date = created_at.date()
+    else:
+        base_date = datetime.now(timezone.utc).date()
+    session_dates = [(base_date - timedelta(days=i)).isoformat() for i in range(7)]
+
+    for s_idx, session_date in enumerate(session_dates):
+        existing_session = await db.attendance_sessions.find_one(
+            {
+                "class_id": demo_class_str,
+                "subject_id": demo_subject_id,
+                "date": session_date,
+                "teacher_id": demo_uid,
+            }
+        )
         if existing_session:
             continue
 
-        # Create the attendance session using _id field
         session = await create_session(
-            {"class_id": demo_class_id, "subject_id": demo_subject_id, "date": session_date},
-            teacher_id=teacher_id,
+            {"class_id": demo_class_str, "subject_id": demo_subject_id, "date": session_date},
+            teacher_id=demo_uid,
         )
 
-        # Build attendance records for all 58 students
-        # Deterministic pattern: present if (stu_idx + s_idx) % 7 != 0
         records = []
         for stu_idx, (_, roll_number, name) in enumerate(DEMO_STUDENTS):
-            student = await db.students.find_one({"teacher_id": teacher_id, "roll_number": roll_number})
+            student = await db.students.find_one(
+                {"teacher_id": demo_uid, "roll_number": str(roll_number)}
+            )
             if not student:
                 continue
+            status = "present" if (stu_idx + s_idx) % 7 != 0 else "absent"
+            records.append(
+                {"session_id": session["id"], "student_id": str(student["_id"]), "status": status}
+            )
+        await bulk_create_records(session["id"], records, teacher_id=demo_uid)
 
-            is_present = (stu_idx + s_idx) % 7 != 0
-            status = "present" if is_present else "absent"
+    return await db.attendance_sessions.count_documents({"teacher_id": demo_uid})
 
-            records.append({
-                "session_id": session["id"],
-                "student_id": str(student["_id"]),
-                "status": status,
-            })
 
-        # Bulk create records for this session
-        await bulk_create_records(session["id"], records, teacher_id=teacher_id)
+async def ensure_demo_dataset(db) -> dict:
+    """Idempotent, self-healing seed. Returns a summary dict with counts."""
+    demo_teacher = await _resolve_demo_teacher(db)
+    demo_uid = _as_str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
+
+    demo_class = await _ensure_demo_class(db, demo_uid)
+    demo_subject = await _ensure_demo_subject(db, demo_uid, demo_class_id(demo_class))
+
+    students = await _ensure_demo_students(db, demo_uid, demo_class_id(demo_class))
+    session_count = await _ensure_demo_attendance(db, demo_uid, demo_class, demo_subject)
+
+    return {
+        "teacher_id": demo_uid,
+        "teacher_email": DEMO_TEACHER["email"],
+        "class_id": demo_class_id(demo_class),
+        "class_count": await db.classes.count_documents({"teacher_id": demo_uid}),
+        "subject_id": _as_str(demo_subject.get("_id") or demo_subject.get("id") or ""),
+        "subject_count": await db.subjects.count_documents({"teacher_id": demo_uid}),
+        "student_count": len(students),
+        "session_count": session_count,
+    }
 
 
 async def main():
-    print("=== AttendVortex Demo Data Seed ===\n")
+    print("=== AttendVortex Demo Data Seed (self-healing) ===\n")
 
-    # Connect to MongoDB using the configured MONGODB_URI
-    mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    mongo_db = os.getenv("MONGODB_DATABASE", "attendance_db")
     await connect_to_mongo()
-    print(f"Connected to MongoDB: {mongo_uri}/{mongo_db}")
+    db = get_database()
 
     try:
-        # 1. Get/create demo teacher
-        print("1. Ensuring demo teacher...")
-        demo_teacher = await _get_demo_teacher()
-        print(f"   Email: {demo_teacher['email']}, Role: {demo_teacher['role']}")
-        print(f"   _id: {demo_teacher.get('_id', 'n/a')}")
+        summary = await ensure_demo_dataset(db)
 
-        # 2. Ensure demo class
-        print("\n2. Ensuring demo class...")
-        demo_class = await _ensure_demo_class(demo_teacher)
-        print(f"   Class: {demo_class['name']}, Section: {demo_class['section']}, Semester: {demo_class['semester']}")
-        print(f"   Academic Year: {demo_class['academic_year']}")
-        print(f"   _id: {demo_class.get('_id', 'n/a')}")
+        demo_uid = summary["teacher_id"]
+        print(f"1. Demo teacher:      {summary['teacher_email']} (id {demo_uid})")
+        print(f"2. Demo classes:      {summary['class_count']}   (class id {summary['class_id']})")
+        print(f"3. Demo subjects:     {summary['subject_count']}   (subject id {summary['subject_id']})")
+        print(f"4. Demo students:     {summary['student_count']}")
+        print(f"5. Demo sessions:     {summary['session_count']}")
 
-        # 3. Ensure demo subject
-        print("\n3. Ensuring demo subject...")
-        demo_subject = await _ensure_demo_subject(demo_teacher, demo_class)
-        print(f"   Subject: {demo_subject['name']}, Code: {demo_subject['code']}")
-        print(f"   _id: {demo_subject.get('_id', 'n/a')}")
-
-        # 4. Ensure demo students
-        print("\n4. Ensuring 58 demo students...")
-        students = await _ensure_demo_students(demo_teacher, demo_class)
-        print(f"   Total students created/already exist: {len(students)}")
-
-        # 5. Verify class student count
-        cid = str(demo_class.get("_id") or demo_class.get("id") or "")
-        teacher_id = str(demo_teacher.get("_id") or demo_teacher.get("id") or "")
-        class_students = await get_students_by_class(cid, teacher_id)
-        print(f"   Students in demo class from DB: {len(class_students)}")
-
-        # 6. Ensure attendance
-        print("\n5. Ensuring demo attendance history...")
-        await _ensure_demo_attendance(demo_teacher, demo_class, demo_subject)
-
-        # 7. Verify some student attendance summaries
         print("\n6. Verifying attendance summaries (first 3 students):")
         for stu_idx in [0, 2, 5]:
-            roll, name = DEMO_STUDENTS[stu_idx][1], DEMO_STUDENTS[stu_idx][2]
-            db = get_database()
-            s_doc = await db.students.find_one({"teacher_id": teacher_id, "roll_number": roll})
+            roll_number = DEMO_STUDENTS[stu_idx][1]
+            name = DEMO_STUDENTS[stu_idx][2]
+            s_doc = await db.students.find_one({"teacher_id": demo_uid, "roll_number": str(roll_number)})
             if s_doc:
-                summary = await get_student_summary(str(s_doc["_id"]), teacher_id)
-                print(f"   {name} (roll {roll}): {summary['present']}present/{summary['total_classes']}sessions = {summary['attendance_percentage']}%")
-
-        # 8. Auth verification
-        print("\n6. Verifying demo account authentication...")
-        user = await authenticate_user("demo@attendvortex.local", "DemoAttendVortex2026!")
-        if user:
-            print("   OK Authentication successful: " + user['name'] + " (" + user['email'] + ")")
-        else:
-            print("   OK Authentication failed — check credentials")
+                stat = await get_student_summary(str(s_doc["_id"]), demo_uid)
+                print(
+                    f"   {name} (roll {roll_number}): "
+                    f"{stat['present']}present/{stat['total_classes']}sessions = "
+                    f"{stat['attendance_percentage']}%"
+                )
 
         print("\n=== Done ===")
     finally:

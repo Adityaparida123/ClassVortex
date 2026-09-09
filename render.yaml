@@ -1,10 +1,25 @@
+# AttendVortex Render Blueprint
+#
+# Backend: FastAPI (Python 3.11) -> URL becomes https://attendvortex-api.onrender.com
+# Frontend: Next.js on Vercel (see DEPLOYMENT.md). The optional Render frontend
+#           service below is only an alternative to Vercel.
+#
+# DASHBOARD-ONLY VARIABLES (sync: false) MUST be set in the Render dashboard once
+# the service exists, otherwise the app falls back to localhost defaults and the
+# backend will not be able to reach MongoDB:
+#   - MONGODB_URI  -> paste the Atlas SRV string (mongodb+srv://user:pass@...). REQUIRED.
+#   - CORS_ORIGINS -> comma-separated frontend origins, e.g.
+#                     https://<your-frontend>.vercel.app,http://localhost:3000
+#   - NEXT_PUBLIC_API_URL (frontend) -> https://attendvortex-api.onrender.com/api/v1
+
 services:
   - type: web
-    name: attendvortex-backend
+    name: attendvortex-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9

@@ -48,6 +48,10 @@ export default function SubjectForm({
       setError("Subject code is required.");
       return;
     }
+    if (classes.length === 0) {
+      setError("No classes available. Create a class first.");
+      return;
+    }
     if (classes.length > 0 && !selectedClassId) {
       setError("Please select a class.");
       return;
@@ -109,6 +113,14 @@ export default function SubjectForm({
             </select>
           </div>
         )}
+        {classes.length === 0 && (
+          <div
+            className="rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]"
+            role="alert"
+          >
+            No classes available. Create a class first.
+          </div>
+        )}
         <div>
           <label
             className="mb-1 block text-sm font-medium text-[var(--text-muted)]"
@@ -146,7 +158,7 @@ export default function SubjectForm({
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || classes.length === 0}>
             {submitting ? "Creating..." : "Create Subject"}
           </Button>
         </div>

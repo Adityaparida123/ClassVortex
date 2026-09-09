@@ -150,7 +150,7 @@ export default function AttendancePage() {
           <div className="mb-4">
             <div className="mb-1 flex items-center justify-between gap-2">
               <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
-              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={classes.length === 0}>
+              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)}>
                 <Icon name="plus" size={14} /> Create Subject
               </Button>
             </div>

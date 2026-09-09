@@ -23,7 +23,7 @@ type Step = "setup" | "marking";
 export default function AttendancePage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [classId, setClassId] = useState("");
+  const [preferredClassId, setPreferredClassId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [step, setStep] = useState<Step>("setup");
@@ -55,30 +55,28 @@ export default function AttendancePage() {
     api.getClasses({ limit: 100 }).then((r) => {
       const items = r.items ?? [];
       setClasses(items);
-      if (items[0]) setClassId(items[0].id);
+      if (items[0]) setPreferredClassId(items[0].id);
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (!classId) {
-      setSubjects([]);
-      return;
-    }
-    api.getSubjects({ class_id: classId, limit: 100 }).then((r) => {
+    api.getSubjects({ limit: 100 }).then((r) => {
       const items = r.items ?? [];
       setSubjects(items);
       if (items[0]) setSubjectId(items[0].id);
-      else setSubjectId("");
     }).catch(() => setSubjects([]));
-  }, [classId]);
+  }, []);
+
+  const selectedSubject = subjects.find((s) => s.id === subjectId) ?? null;
+  const classId = selectedSubject?.class_id ?? "";
+  const subjectTargetClassId = selectedSubject?.class_id || preferredClassId || classes[0]?.id || "";
 
   const handleCreateClass = async (data: ClassCreate | ClassUpdate) => {
     const cls = await api.createClass(data as ClassCreate);
     const next = [...classes, cls];
     setClasses(next);
-    setSubjects([]);
     setSubjectId("");
-    setClassId(cls.id);
+    setPreferredClassId(cls.id);
     setCreateFeedback(`Class "${cls.name}" created.`);
   };
 
@@ -92,7 +90,7 @@ export default function AttendancePage() {
 
   const startSession = async () => {
     if (!classId || !subjectId) {
-      setSetupError("Please select both a class and a subject.");
+      setSetupError("Please select a subject.");
       return;
     }
     setSetupError(null);
@@ -150,7 +148,7 @@ export default function AttendancePage() {
       {step === "setup" ? (
         <Card className="mx-auto max-w-xl p-6" variant="glass-strong">
           <h2 className="mb-1 text-lg font-semibold">New Attendance Session</h2>
-          <p className="mb-6 text-sm text-[var(--text-muted)]">Select a class and subject to begin.</p>
+          <p className="mb-6 text-sm text-[var(--text-muted)]">Select a subject to begin.</p>
 
           {setupError && (
             <div className="mb-4 rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">
@@ -166,33 +164,23 @@ export default function AttendancePage() {
 
           <div className="mb-4">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-class">Class</label>
+              <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
               <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowClassForm(true)}>
                 <Icon name="plus" size={14} /> Create Class
               </Button>
             </div>
-            <select id="att-class" className="input-base" value={classId} onChange={(e) => setClassId(e.target.value)}>
-              {classes.length === 0 && <option value="">No classes available</option>}
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} · Sem {c.semester} · {c.section}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mb-2">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
-              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={!classId}>
-                <Icon name="plus" size={14} /> Create Subject
-              </Button>
-            </div>
-            <select id="att-subject" className="input-base" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} disabled={!classId}>
-              {!classId && <option value="">Select a class first</option>}
-              {classId && subjects.length === 0 && <option value="">No subjects for this class</option>}
+            <select id="att-subject" className="input-base" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+              {subjects.length === 0 && <option value="">No subjects available</option>}
+              {subjects.length > 0 && !subjectId && <option value="">Select subject</option>}
               {subjects.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
               ))}
             </select>
+            <div className="mt-2 flex justify-end">
+              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)} disabled={!subjectTargetClassId}>
+                <Icon name="plus" size={14} /> Create Subject
+              </Button>
+            </div>
           </div>
 
           <Button className="mt-6 w-full" size="lg" onClick={startSession}>
@@ -266,7 +254,7 @@ export default function AttendancePage() {
       <SubjectForm
         open={showSubjectForm}
         onClose={() => setShowSubjectForm(false)}
-        classId={classId}
+        classId={subjectTargetClassId}
         teacherId={user?.id ?? ""}
         onSubmit={handleCreateSubject}
       />

@@ -54,46 +54,62 @@ export default function DashboardPage() {
     (async () => {
       setLoading(true);
       setError(null);
-      try {
-        const [students, classes, daily] = await Promise.all([
-          api.getStudents({ limit: 1 }),
-          api.getClasses({ limit: 1 }),
-          api.getDailyReport({ date: todayISO() }),
-        ]);
 
-        let overallPct = 0;
-        try {
-          const monthly = await api.getMonthlyReport({});
-          const summaries = monthly.student_summaries ?? [];
-          if (summaries.length) {
-            overallPct =
-              summaries.reduce((s: number, x: StudentSummaryRow) => s + (x.attendance_percentage || 0), 0) /
-              summaries.length;
-          }
-        } catch {
-          overallPct = 0;
-        }
+      const [studentsRes, classesRes, dailyRes] = await Promise.allSettled([
+        api.getStudents({ limit: 1 }),
+        api.getClasses({ limit: 1 }),
+        api.getDailyReport({ date: todayISO() }),
+      ]);
 
-        if (cancelled) return;
-        setData({
-          totalStudents: students.total ?? 0,
-          totalClasses: classes.total ?? 0,
-          presentToday: daily.total_present ?? 0,
-          absentToday: daily.total_absent ?? 0,
-          totalToday: daily.total_records ?? 0,
-          overallPct,
-          todaysSessions: daily.sessions ?? [],
-        });
-        setUsingMock(false);
-      } catch (e) {
-        const err = e as ApiError;
-        if (!cancelled) {
-          setError(err.message || "Unable to load dashboard.");
-          setUsingMock(true);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      const students = studentsRes.status === "fulfilled" ? studentsRes.value : null;
+      const classes = classesRes.status === "fulfilled" ? classesRes.value : null;
+      const daily = dailyRes.status === "fulfilled" ? dailyRes.value : null;
+
+      const anyFulfilled = students || classes || daily;
+      if (!anyFulfilled && !cancelled) {
+        const firstErr =
+          studentsRes.status === "rejected"
+            ? studentsRes.reason
+            : classesRes.status === "rejected"
+              ? classesRes.reason
+              : dailyRes.status === "rejected"
+                ? dailyRes.reason
+                : null;
+        setError(
+          (firstErr as ApiError)?.message || "Unable to load dashboard."
+        );
+        setUsingMock(true);
+        setLoading(false);
+        return;
       }
+
+      let overallPct = 0;
+      try {
+        const monthly = await api.getMonthlyReport({});
+        const summaries = monthly.student_summaries ?? [];
+        if (summaries.length) {
+          overallPct =
+            summaries.reduce(
+              (s: number, x: StudentSummaryRow) => s + (x.attendance_percentage || 0),
+              0,
+            ) / summaries.length;
+        }
+      } catch {
+        overallPct = 0;
+      }
+
+      if (cancelled) return;
+      setData({
+        totalStudents: students?.total ?? 0,
+        totalClasses: classes?.total ?? 0,
+        presentToday: daily?.total_present ?? 0,
+        absentToday: daily?.total_absent ?? 0,
+        totalToday: daily?.total_records ?? 0,
+        overallPct,
+        todaysSessions: daily?.sessions ?? [],
+      });
+      setUsingMock(false);
+      setLoading(false);
     })();
     return () => {
       cancelled = true;

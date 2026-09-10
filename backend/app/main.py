@@ -68,4 +68,14 @@ async def read_root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "ok", "app": settings.APP_NAME}
+    from app.database import get_database
+
+    db_status = "disconnected"
+    db = get_database()
+    if db is not None:
+        try:
+            await db.command("ping")
+            db_status = "connected"
+        except Exception:
+            db_status = "error"
+    return {"status": "ok", "app": settings.APP_NAME, "database": db_status}

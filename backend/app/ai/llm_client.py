@@ -9,7 +9,7 @@ class LLMClient:
 
     async def chat(self, messages: list) -> str:
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
                 response = await client.post(
                     f"{self.base_url}/api/chat",
                     json={

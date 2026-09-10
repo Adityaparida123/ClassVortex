@@ -31,6 +31,7 @@ export default function AttendancePage() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [showClassForm, setShowClassForm] = useState(false);
+  const [classNameOrigin, setClassNameOrigin] = useState<"main" | "subject">("main");
   const [pendingClassId, setPendingClassId] = useState("");
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
@@ -102,9 +103,14 @@ export default function AttendancePage() {
     setClasses(res.items ?? []);
     setPendingClassId(created.id);
     setShowClassForm(false);
+    if (classNameOrigin === "subject") {
+      setShowSubjectForm(true);
+    }
+    setClassNameOrigin("main");
   };
 
-  const handleOpenClassCreate = () => {
+  const handleOpenClassCreate = (origin: "main" | "subject" = "main") => {
+    setClassNameOrigin(origin);
     setPendingClassId("");
     setShowSubjectForm(false);
     setShowClassForm(true);
@@ -238,7 +244,7 @@ export default function AttendancePage() {
             </div>
 
             {classes.length === 0 && (
-              <Button variant="ghost" className="w-full" onClick={handleOpenClassCreate}>
+              <Button variant="ghost" className="w-full" onClick={() => handleOpenClassCreate("main")}>
                 <Icon name="plus" size={16} /> Create Course
               </Button>
             )}
@@ -366,7 +372,7 @@ export default function AttendancePage() {
         classes={classes}
         teacherId={user?.id ?? ""}
         defaultClassId={pendingClassId}
-        onCreateClass={handleOpenClassCreate}
+        onCreateClass={() => handleOpenClassCreate("subject")}
         onSubmit={handleCreateSubject}
       />
 

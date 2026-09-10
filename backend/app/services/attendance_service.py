@@ -100,6 +100,30 @@ async def get_session_by_id(session_id: str, teacher_id: str) -> Optional[dict]:
     return serialize_id(session) if session else None
 
 
+async def delete_session(session_id: str, teacher_id: str) -> bool:
+    """Delete a session and all of its records.
+
+    Returns True on success. Returns False if the session does not exist.
+    Raises PermissionError if the session exists but belongs to another user.
+    """
+    db = get_database()
+    try:
+        session = await db.attendance_sessions.find_one({"_id": ObjectId(session_id)})
+    except Exception:
+        return False
+    if session is None:
+        return False
+    if not _ids_match(session.get("teacher_id"), teacher_id):
+        raise PermissionError(
+            "This attendance session does not belong to your account."
+        )
+    await db.attendance_records.delete_many(
+        {"session_id": session_id, "teacher_id": teacher_id}
+    )
+    await db.attendance_sessions.delete_one({"_id": ObjectId(session_id)})
+    return True
+
+
 async def create_record(session_id: str, student_id: str, status: str, teacher_id: str) -> dict:
     db = get_database()
     session = await _get_owned_session(session_id, teacher_id)

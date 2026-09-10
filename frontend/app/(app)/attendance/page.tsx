@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import PageContainer from "@/components/layout/PageContainer";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/ui/Badge";
 import Icon from "@/components/ui/Icon";
+import Modal from "@/components/ui/Modal";
 import AttendanceRow from "@/components/attendance/AttendanceRow";
 import SubjectForm from "@/components/attendance/SubjectForm";
 import ClassForm from "@/components/classes/ClassForm";
@@ -15,6 +16,7 @@ import { useAttendance } from "@/hooks/useAttendance";
 import { useAuth } from "@/hooks/useAuth";
 import type { Student } from "@/types/student";
 import type { ClassItem, ClassCreate, ClassUpdate, Subject, SubjectCreate } from "@/types/class";
+import type { AttendanceSession } from "@/types/attendance";
 import { todayISO, formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUSES } from "@/lib/constants";
 import { staggerIn, successPop } from "@/animations/index";
@@ -31,6 +33,12 @@ export default function AttendancePage() {
   const [showClassForm, setShowClassForm] = useState(false);
   const [pendingClassId, setPendingClassId] = useState("");
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<AttendanceSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [confirmDeleteSession, setConfirmDeleteSession] = useState<AttendanceSession | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const saveRef = useRef<HTMLDivElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -50,6 +58,18 @@ export default function AttendancePage() {
     save,
     reset,
   } = useAttendance();
+
+  const loadSessions = useCallback(() => {
+    setSessionsLoading(true);
+    api.getSessions({ limit: 50 })
+      .then((r) => setSessions(r.items ?? []))
+      .catch(() => setSessions([]))
+      .finally(() => setSessionsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
 
   useEffect(() => {
     api.getClasses({ limit: 100 }).then((r) => {
@@ -90,6 +110,33 @@ export default function AttendancePage() {
     setShowClassForm(true);
   };
 
+  const handleConfirmDelete = async () => {
+    if (!confirmDeleteSession) return;
+    setDeleteError(null);
+    setDeletingSessionId(confirmDeleteSession.id);
+    try {
+      await api.deleteAttendanceSession(confirmDeleteSession.id);
+      setSessions((prev) => prev.filter((s) => s.id !== confirmDeleteSession.id));
+      setDeleteSuccess("Attendance session deleted successfully.");
+      setConfirmDeleteSession(null);
+    } catch (e) {
+      const err = e as ApiError;
+      if (err.status === 401) {
+        setDeleteError("Your session has expired. Please sign in again.");
+      } else if (err.status === 403) {
+        setDeleteError("This attendance session does not belong to your account.");
+      } else if (err.status === 404) {
+        setDeleteError("Attendance session not found.");
+      } else if (err.status >= 500) {
+        setDeleteError("Unable to delete attendance session. Please try again.");
+      } else {
+        setDeleteError(err.message || "Unable to delete attendance session. Please try again.");
+      }
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
   const startSession = async () => {
     if (!classId || !subjectId) {
       setSetupError("Please select a subject.");
@@ -103,6 +150,7 @@ export default function AttendancePage() {
         date: todayISO(),
         start_time: "09:00",
       });
+      loadSessions();
       const res = await api.getStudents({ class_id: classId, limit: 100 });
       setStudents(res.items ?? []);
       seedRecords((res.items ?? []).map((st) => st.id));
@@ -132,10 +180,18 @@ export default function AttendancePage() {
     }
   }, [createFeedback]);
 
+  useEffect(() => {
+    if (deleteSuccess) {
+      const t = setTimeout(() => setDeleteSuccess(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [deleteSuccess]);
+
   const handleReset = () => {
     reset();
     setStep("setup");
     setStudents([]);
+    loadSessions();
   };
 
   const subjectName = subjects.find((s) => s.id === subjectId)?.name ?? "";
@@ -148,48 +204,101 @@ export default function AttendancePage() {
       animateKey={`att-${step}`}
     >
       {step === "setup" ? (
-        <Card className="mx-auto max-w-xl p-6" variant="glass-strong">
-          <h2 className="mb-1 text-lg font-semibold">New Attendance Session</h2>
-          <p className="mb-6 text-sm text-[var(--text-muted)]">Select a subject to begin.</p>
+        <div className="mx-auto max-w-xl space-y-6">
+          <Card className="p-6" variant="glass-strong">
+            <h2 className="mb-1 text-lg font-semibold">New Attendance Session</h2>
+            <p className="mb-6 text-sm text-[var(--text-muted)]">Select a subject to begin.</p>
 
-          {setupError && (
-            <div className="mb-4 rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">
-              {setupError}
+            {setupError && (
+              <div className="mb-4 rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">
+                {setupError}
+              </div>
+            )}
+
+            {createFeedback && (
+              <div ref={feedbackRef} className="mb-4 rounded-xl border border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.1)] px-4 py-3 text-sm text-[var(--success)]" role="status">
+                {createFeedback}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
+                <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)}>
+                  <Icon name="plus" size={14} /> Create Subject
+                </Button>
+              </div>
+              <select id="att-subject" className="input-base" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+                {subjects.length === 0 && <option value="">No subjects available</option>}
+                {subjects.length > 0 && !subjectId && <option value="">Select subject</option>}
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                ))}
+              </select>
             </div>
-          )}
 
-          {createFeedback && (
-            <div ref={feedbackRef} className="mb-4 rounded-xl border border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.1)] px-4 py-3 text-sm text-[var(--success)]" role="status">
-              {createFeedback}
-            </div>
-          )}
-
-          <div className="mb-4">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <label className="block text-sm font-medium text-[var(--text-muted)]" htmlFor="att-subject">Subject</label>
-              <Button variant="ghost" size="sm" className="!px-2.5 !py-1 !text-xs" onClick={() => setShowSubjectForm(true)}>
-                <Icon name="plus" size={14} /> Create Subject
+            {classes.length === 0 && (
+              <Button variant="ghost" className="w-full" onClick={handleOpenClassCreate}>
+                <Icon name="plus" size={16} /> Create Course
               </Button>
-            </div>
-            <select id="att-subject" className="input-base" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-              {subjects.length === 0 && <option value="">No subjects available</option>}
-              {subjects.length > 0 && !subjectId && <option value="">Select subject</option>}
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
-              ))}
-            </select>
-          </div>
+            )}
 
-          {classes.length === 0 && (
-            <Button variant="ghost" className="w-full" onClick={handleOpenClassCreate}>
-              <Icon name="plus" size={16} /> Create Course
+            <Button className="mt-6 w-full" size="lg" onClick={startSession} disabled={!subjectId}>
+              Start Attendance
             </Button>
+          </Card>
+
+          {deleteSuccess && (
+            <div className="rounded-xl border border-[rgba(52,211,153,0.3)] bg-[rgba(52,211,153,0.1)] px-4 py-3 text-sm text-[var(--success)]" role="status">
+              {deleteSuccess}
+            </div>
           )}
 
-          <Button className="mt-6 w-full" size="lg" onClick={startSession} disabled={!subjectId}>
-            Start Attendance
-          </Button>
-        </Card>
+          <Card className="p-6" variant="glass-strong">
+            <h2 className="mb-1 text-lg font-semibold">Session History</h2>
+            <p className="mb-4 text-sm text-[var(--text-muted)]">Previously created attendance sessions.</p>
+
+            {sessionsLoading ? (
+              <Loading message="Loading sessions..." />
+            ) : sessions.length === 0 ? (
+              <p className="py-4 text-center text-sm text-[var(--text-muted)]">No attendance sessions yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {sessions.map((s) => {
+                  const subj = subjects.find((sub) => sub.id === s.subject_id);
+                  const cls = classes.find((c) => c.id === s.class_id);
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{subj?.name || "Subject"}</span>
+                          {cls && <span className="text-sm text-[var(--text-muted)]">— {cls.name}</span>}
+                        </div>
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                          {formatDate(s.date)} · {s.start_time}
+                        </p>
+                      </div>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={deletingSessionId === s.id}
+                        onClick={() => {
+                          setDeleteError(null);
+                          setConfirmDeleteSession(s);
+                        }}
+                      >
+                        {deletingSessionId === s.id ? "Deleting..." : "Delete"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </div>
       ) : session ? (
         <div className="space-y-4">
           <Card className="flex flex-wrap items-center justify-between gap-4 p-4" variant="glass">
@@ -266,6 +375,47 @@ export default function AttendancePage() {
         onClose={() => setShowClassForm(false)}
         onSubmit={handleCreateClass}
       />
+
+      <Modal
+        open={!!confirmDeleteSession}
+        onClose={() => {
+          setConfirmDeleteSession(null);
+          setDeleteError(null);
+        }}
+        title="Delete Attendance Session"
+      >
+        <p className="mb-2 text-sm text-[var(--text-muted)]">
+          Are you sure you want to delete this attendance session?
+        </p>
+        <p className="mb-4 text-sm text-[var(--text-muted)]">
+          This will permanently delete the session and all attendance records associated with it.
+        </p>
+
+        {deleteError && (
+          <div className="mb-4 rounded-xl border border-[rgba(251,113,133,0.3)] bg-[rgba(251,113,133,0.1)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">
+            {deleteError}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirmDeleteSession(null);
+              setDeleteError(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            disabled={deletingSessionId === confirmDeleteSession?.id}
+            onClick={handleConfirmDelete}
+          >
+            {deletingSessionId === confirmDeleteSession?.id ? "Deleting..." : "Delete Session"}
+          </Button>
+        </div>
+      </Modal>
     </PageContainer>
   );
 }

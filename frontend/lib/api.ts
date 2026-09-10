@@ -377,6 +377,10 @@ export const api = {
     request<{ session: AttendanceSession; records: AttendanceRecord[] }>(
       `/attendance/sessions/${id}`
     ),
+  deleteAttendanceSession: (sessionId: string) =>
+    request<{ message: string }>(`/attendance/sessions/${sessionId}`, {
+      method: "DELETE",
+    }),
   bulkMarkAttendance: (sessionId: string, data: AttendanceRecordBulk) =>
     request<AttendanceRecord[]>(`/attendance/sessions/${sessionId}/bulk`, {
       method: "POST",

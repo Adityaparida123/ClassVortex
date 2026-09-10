@@ -58,6 +58,28 @@ async def get_session(
     return {"success": True, "data": {"session": session, "records": records}}
 
 
+@router.delete("/sessions/{session_id}", response_model=dict)
+async def delete_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        deleted = await attendance_service.delete_session(
+            session_id, str(current_user["_id"])
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attendance session not found",
+        )
+    return {
+        "success": True,
+        "data": {"message": "Attendance session deleted successfully."},
+    }
+
+
 @router.post("/sessions/{session_id}/records", response_model=dict)
 async def create_record(
     session_id: str,

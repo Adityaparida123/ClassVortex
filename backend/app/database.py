@@ -70,6 +70,10 @@ async def create_indexes():
         await db.attendance_records.create_index("session_id")
         await db.attendance_records.create_index("student_id")
         await db.attendance_records.create_index("teacher_id")
+        await db.attendance_records.create_index(
+            [("session_id", 1), ("student_id", 1), ("teacher_id", 1)],
+            name="record_lookup",
+        )
     except Exception as e:
         logger.error(f"Failed to create MongoDB indexes: {e.__class__.__name__}: {e}")
         raise

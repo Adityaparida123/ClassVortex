@@ -162,7 +162,7 @@ export default function AttendanceVortex3D({
     // ---- Animation loop ----
     let rafId = 0;
     let running = true;
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
 
     // Persistent color targets (avoid per-frame allocations).
     const orbTarget = new THREE.Color(theme.solid);
@@ -173,7 +173,8 @@ export default function AttendanceVortex3D({
     const tick = () => {
       if (!running) return;
       rafId = requestAnimationFrame(tick);
-      const t = clock.getElapsedTime();
+      timer.update();
+      const t = timer.getElapsed();
       const animScale = reduced ? 0.15 : 1;
 
       // Rotate main vortex slowly.

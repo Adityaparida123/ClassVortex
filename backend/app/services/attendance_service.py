@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List
 from bson import ObjectId
+from pymongo import UpdateOne
 from app.database import get_database
 from app.utils.helpers import serialize_id
 
@@ -159,26 +160,51 @@ async def bulk_create_records(session_id: str, records: List[dict], teacher_id: 
     if session is None:
         raise ValueError("Session not found or not owned by this user")
 
-    created = []
+    # Load the teacher's students for this class ONCE (avoids N+1 lookups).
+    class_id = str(session.get("class_id")) if session.get("class_id") else None
+    student_query = {"teacher_id": teacher_id}
+    if class_id:
+        student_query["class_id"] = class_id
+    owned_ids = set()
+    cursor = db.students.find(student_query, {"_id": 1})
+    async for student in cursor:
+        owned_ids.add(str(student["_id"]))
+
+    if not records or not owned_ids:
+        return []
+
+    now = datetime.now(timezone.utc)
+    ops = []
     for record in records:
-        student = await _get_owned_student(record["student_id"], teacher_id)
-        if student is None:
+        student_id = str(record.get("student_id") or "")
+        if student_id not in owned_ids:
             continue
-        if student.get("class_id") and not _ids_match(student.get("class_id"), session.get("class_id")):
-            continue
-        try:
-            result = await create_record(session_id, record["student_id"], record["status"], teacher_id)
-            created.append(result)
-        except ValueError:
-            existing = await db.attendance_records.find_one(
-                {"session_id": session_id, "student_id": record["student_id"], "teacher_id": teacher_id}
+        ops.append(
+            UpdateOne(
+                {
+                    "session_id": session_id,
+                    "student_id": student_id,
+                    "teacher_id": teacher_id,
+                },
+                {
+                    "$set": {
+                        "status": record.get("status", "present"),
+                        "marked_at": now,
+                    },
+                },
+                upsert=True,
             )
-            if existing:
-                await db.attendance_records.update_one(
-                    {"_id": existing["_id"]},
-                    {"$set": {"status": record["status"], "marked_at": datetime.now(timezone.utc)}},
-                )
-                created.append(serialize_id({**existing, "status": record["status"]}))
+        )
+
+    if ops:
+        await db.attendance_records.bulk_write(ops, ordered=False)
+
+    result = db.attendance_records.find(
+        {"session_id": session_id, "teacher_id": teacher_id}
+    )
+    created = []
+    async for record in result:
+        created.append(serialize_id(record))
     return created
 
 

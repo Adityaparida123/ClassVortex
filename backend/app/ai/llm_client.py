@@ -20,6 +20,7 @@ class LLMClient:
         self.provider = (settings.LLM_PROVIDER or "ollama").lower().strip()
         self.base_url = (settings.OLLAMA_BASE_URL or "").strip().rstrip("/")
         self.model = settings.OLLAMA_MODEL
+        self.ollama_api_key = (settings.OLLAMA_API_KEY or "").strip()
         self.openai_base_url = (settings.OPENAI_COMPATIBLE_BASE_URL or "").strip().rstrip("/")
         self.openai_model = settings.OPENAI_COMPATIBLE_MODEL
         self.openai_api_key = (settings.OPENAI_COMPATIBLE_API_KEY or "").strip()
@@ -48,6 +49,11 @@ class LLMClient:
     def display_model(self) -> str:
         return self.openai_model if self.provider == "openai_compatible" else self.model
 
+    def _ollama_headers(self) -> dict:
+        if self.ollama_api_key:
+            return {"Authorization": f"Bearer {self.ollama_api_key}"}
+        return {}
+
     async def health(self) -> dict:
         """Lightweight connectivity check.
 
@@ -67,7 +73,9 @@ class LLMClient:
         try:
             async with _new_async_client(timeout=5.0) as client:
                 if self.provider == "ollama":
-                    resp = await client.get(f"{self.base_url}/api/tags")
+                    resp = await client.get(
+                        f"{self.base_url}/api/tags", headers=self._ollama_headers()
+                    )
                 else:
                     headers = {}
                     if self.openai_api_key:
@@ -154,6 +162,7 @@ class LLMClient:
                             "messages": messages,
                             "stream": False,
                         },
+                        headers=self._ollama_headers(),
                     )
                     if response.status_code == 200:
                         data = response.json()

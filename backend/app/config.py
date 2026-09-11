@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "ollama"
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3"
+    # Optional bearer token for a remotely deployed Ollama. Sent as an
+    # Authorization: Bearer header to the Ollama endpoint when configured.
+    # Leave blank for a local Ollama that needs no auth.
+    OLLAMA_API_KEY: str = ""
     LLM_TIMEOUT_SECONDS: float = 45.0
 
     # Optional OpenAI-compatible endpoint (remote/cloud LLM). When the app is

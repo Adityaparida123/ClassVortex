@@ -712,6 +712,37 @@ async def test_status_handles_llm_timeout_gracefully(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_status_sends_bearer_token_when_ollama_api_key_set(client, monkeypatch):
+    class _AuthCapturingClient:
+        def __init__(self, *args, **kwargs):
+            self.headers = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            self.headers = kwargs.get("headers", {})
+            assert self.headers.get("Authorization") == "Bearer test-token"
+            class _Resp:
+                status_code = 200
+
+                def json(self):
+                    return {"models": [{"name": "llama3"}]}
+
+            return _Resp()
+
+    fake = _AuthCapturingClient()
+    monkeypatch.setattr(llm_client_module, "_new_async_client", lambda timeout: fake)
+    monkeypatch.setattr(llm_client_module.llm_client, "ollama_api_key", "test-token")
+    status = await llm_client_module.llm_client.health()
+    assert status["available"] is True
+    assert fake.headers.get("Authorization") == "Bearer test-token"
+
+
+@pytest.mark.asyncio
 async def test_status_reports_unsupported_provider(client, monkeypatch):
     monkeypatch.setattr(llm_client_module.llm_client, "provider", "not_a_provider")
     monkeypatch.setattr(llm_client_module.llm_client, "_config_reason", lambda: "LLM_PROVIDER 'not_a_provider' is not supported.")

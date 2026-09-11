@@ -1,4 +1,5 @@
 import pytest
+import json
 from datetime import datetime, timezone
 
 import app.ai.assistant_service as assistant_service
@@ -256,3 +257,189 @@ async def test_ai_isolation_between_teachers(client):
 async def test_ai_requires_auth(client):
     resp = await client.post("/api/v1/ai/chat", json={"message": "hi"})
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_export_excel_intent_dd_slash_mm_date(client):
+    """'9/11/2026' style must parse as Indian DD/MM/YYYY.
+
+    Today is %Y-%m-%d, so '11/09/2026' means 11 September 2026 (has data).
+    If the date were mis-parsed as MM/DD it would become 2026-11-09 (no data).
+    """
+    headers = await _setup_teacher(client)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day, month = today.split("-")[2], today.split("-")[1]
+    data = await _chat(client, headers, f"Create the Excel sheet of attendance for {day}/{month}/2026")
+    assert data["tool_used"] == "export_attendance"
+    assert "Responding to" not in data["answer"]
+    payload = data["data"]["export"]
+    assert payload["format"] == "xlsx"
+    assert payload["from_date"] == today
+    assert payload["to_date"] == today
+    assert payload["row_count"] == 5
+    assert "Download" in data["answer"]
+
+
+@pytest.mark.asyncio
+async def test_export_csv_natural_language_date(client):
+    headers = await _setup_teacher(client)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day, month, year = today.split("-")[2], today.split("-")[1], today.split("-")[0]
+    month_name = datetime(int(year), int(month), 1).strftime("%B")
+    data = await _chat(client, headers, f"Export attendance for {int(day)} {month_name} {year} as CSV")
+    assert data["tool_used"] == "export_attendance"
+    payload = data["data"]["export"]
+    assert payload["format"] == "csv"
+    assert payload["from_date"] == today
+    assert payload["row_count"] == 5
+
+
+@pytest.mark.asyncio
+async def test_export_intent_with_no_data_offers_no_download(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "Export attendance for 1 January 2020")
+    assert data["tool_used"] == "export_attendance"
+    assert data["data"]["export"] is None
+    assert "nothing to download" in data["answer"]
+
+
+@pytest.mark.asyncio
+async def test_natural_language_full_date_routes_to_daily_tool(client):
+    headers = await _setup_teacher(client)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day, month, year = today.split("-")[2], today.split("-")[1], today.split("-")[0]
+    month_name = datetime(int(year), int(month), 1).strftime("%B")
+    data = await _chat(client, headers, f"Show attendance for {int(day)} {month_name} {year}")
+    assert data["tool_used"] == "get_daily_attendance"
+    assert data["data"]["date"] == today
+    assert data["data"]["total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_numeric_date_routes_to_daily_tool_indian_convention(client):
+    headers = await _setup_teacher(client)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day, month = today.split("-")[2], today.split("-")[1]
+    data = await _chat(client, headers, f"Show attendance for {day}/{month}/2026")
+    assert data["tool_used"] == "get_daily_attendance"
+    assert data["data"]["date"] == today
+
+
+@pytest.mark.asyncio
+async def test_month_query_routes_to_monthly_report(client):
+    headers = await _setup_teacher(client)
+    now = datetime.now(timezone.utc)
+    data = await _chat(client, headers, "Show attendance for September")
+    assert data["tool_used"] == "get_monthly_report"
+    assert data["data"]["month"] == f"{now.year:04d}-09"
+
+
+@pytest.mark.asyncio
+async def test_low_attendance_wording_routes_to_threshold_tool(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "Which students have low attendance?")
+    assert data["tool_used"] == "get_low_attendance_students"
+    names = {s["name"] for s in data["data"]}
+    assert "Sagar Singh" in names
+    assert "Prabin Gartia" in names
+
+
+@pytest.mark.asyncio
+async def test_attendance_summary_routes_and_aggregates(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "Give me the attendance summary")
+    assert data["tool_used"] == "get_attendance_summary"
+    assert data["data"]["total_sessions"] == 3
+    assert data["data"]["total_students"] == 3
+    assert data["data"]["total_records"] == 5
+    assert data["data"]["present"] == 3
+    assert data["data"]["absent"] == 2
+    assert data["data"]["attendance_percentage"] == 60.0
+
+
+@pytest.mark.asyncio
+async def test_timeout_returns_labeled_fallback_with_data(client, monkeypatch):
+    async def fake_timeout(messages):
+        return "AI request timed out. Please try again."
+
+    monkeypatch.setattr(assistant_service.llm_client, "chat", fake_timeout)
+
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "Show me today's attendance.")
+    assert data["tool_used"] == "get_today_attendance"
+    assert data["ai_unavailable"] is True
+    assert "timed out" in data["answer"]
+    assert "data directly" in data["answer"]
+    assert data["data"]["total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_export_intent_is_isolated_between_teachers(client):
+    headers = await _setup_teacher(client)
+
+    other_token = await _register_and_login(client, "Export Isol Teacher", _next_email(), PASSWORD)
+    other_headers = _headers(other_token)
+    other_class = await _create_class(client, other_headers, "ISODEMO")
+    other_subject = await _create_subject(client, other_headers, other_class, "IS001", "Isolation Demo")
+    other_student = await _create_student(client, other_headers, other_class, "ISO001", "Isolated Student")
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    sess = await client.post(
+        "/api/v1/attendance/sessions",
+        json={"class_id": other_class, "subject_id": other_subject, "date": today},
+        headers=other_headers,
+    )
+    assert sess.status_code == 200
+    session_id = sess.json()["data"]["id"]
+    bulk = await client.post(
+        f"/api/v1/attendance/sessions/{session_id}/bulk",
+        json={"records": [{"student_id": other_student, "status": "present"}]},
+        headers=other_headers,
+    )
+    assert bulk.status_code == 200
+
+    day, month = today.split("-")[2], today.split("-")[1]
+    data = await _chat(client, headers, f"Create the Excel sheet of attendance for {day}/{month}/2026")
+    assert data["tool_used"] == "export_attendance"
+    assert data["data"]["export"]["row_count"] == 5
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint_public_and_secret_free(client, monkeypatch):
+    async def fake_health():
+        return {
+            "available": True,
+            "provider": "ollama",
+            "model": "llama3",
+            "reason": None,
+        }
+
+    monkeypatch.setattr(assistant_service.llm_client, "health", fake_health)
+
+    resp = await client.get("/api/v1/ai/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["data"]["available"] is True
+    assert "base_url" not in body["data"]
+    assert "api_key" not in json.dumps(body).lower()
+
+
+@pytest.mark.asyncio
+async def test_health_reflects_missing_config(client, monkeypatch):
+    async def fake_health():
+        return {
+            "available": False,
+            "provider": "ollama",
+            "model": "llama3",
+            "reason": "OLLAMA_BASE_URL is not configured.",
+        }
+
+    monkeypatch.setattr(assistant_service.llm_client, "health", fake_health)
+
+    resp = await client.get("/api/v1/ai/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["data"]["available"] is False
+    assert body["data"]["reason"]

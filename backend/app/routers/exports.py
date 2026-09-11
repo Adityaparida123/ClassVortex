@@ -11,12 +11,19 @@ router = APIRouter(prefix="/api/v1/exports", tags=["Exports"])
 @router.get("/attendance/csv")
 async def export_csv(
     class_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    student_id: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     filepath = await export_service.export_attendance_csv(
-        str(current_user["_id"]), class_id=class_id, from_date=from_date, to_date=to_date
+        str(current_user["_id"]),
+        class_id=class_id,
+        subject_id=subject_id,
+        student_id=student_id,
+        from_date=from_date,
+        to_date=to_date,
     )
     if not filepath:
         return {"success": True, "data": {"message": "No data to export"}}
@@ -30,12 +37,19 @@ async def export_csv(
 @router.get("/attendance/excel")
 async def export_excel(
     class_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    student_id: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     filepath = await export_service.export_attendance_excel(
-        str(current_user["_id"]), class_id=class_id, from_date=from_date, to_date=to_date
+        str(current_user["_id"]),
+        class_id=class_id,
+        subject_id=subject_id,
+        student_id=student_id,
+        from_date=from_date,
+        to_date=to_date,
     )
     if not filepath:
         return {"success": True, "data": {"message": "No data to export"}}

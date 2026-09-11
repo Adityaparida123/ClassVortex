@@ -443,14 +443,19 @@ async def get_total_student_count(teacher_id: str) -> int:
 
 async def get_today_attendance(teacher_id: str) -> dict:
     """Return today's active session(s) plus their attendance records."""
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return await get_daily_attendance(today_str, teacher_id)
+
+
+async def get_daily_attendance(date_str: str, teacher_id: str) -> dict:
+    """Return attendance for one date: session(s) plus their records."""
     db = get_database()
     if db is None:
-        return {"date": None, "sessions": [], "present": 0, "absent": 0, "late": 0, "excused": 0, "total": 0}
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return {"date": date_str, "sessions": [], "present": 0, "absent": 0, "late": 0, "excused": 0, "total": 0}
     sessions = []
     present = absent = late = excused = total = 0
     async for sess in db.attendance_sessions.find(
-        {"date": today_str, "teacher_id": teacher_id}
+        {"date": date_str, "teacher_id": teacher_id}
     ):
         sess_id = str(sess["_id"])
         session_data = serialize_id(sess)
@@ -505,7 +510,7 @@ async def get_today_attendance(teacher_id: str) -> dict:
         sessions.append(session_data)
 
     return {
-        "date": today_str,
+        "date": date_str,
         "sessions": sessions,
         "present": present,
         "absent": absent,
@@ -521,13 +526,79 @@ async def get_monthly_report(month: str, teacher_id: str) -> dict:
 
     db = get_database()
     if db is None:
-        return {"month": month, "total_sessions": 0}
+        return {"month": month, "total_sessions": 0, "total_records": 0, "present": 0, "absent": 0, "late": 0, "excused": 0}
     sessions = []
     async for session in db.attendance_sessions.find(
         {"date": {"$regex": f"^{month}"}, "teacher_id": teacher_id}
     ):
         sessions.append(serialize_id(session))
-    return {"month": month, "total_sessions": len(sessions)}
+
+    session_ids = [s["id"] for s in sessions]
+    present = absent = late = excused = 0
+    if session_ids:
+        async for record in db.attendance_records.find(
+            {"session_id": {"$in": session_ids}, "teacher_id": teacher_id},
+            {"status": 1, "_id": 0},
+        ):
+            status = record.get("status", "")
+            if status == "present":
+                present += 1
+            elif status == "absent":
+                absent += 1
+            elif status == "late":
+                late += 1
+            elif status == "excused":
+                excused += 1
+
+    return {
+        "month": month,
+        "total_sessions": len(sessions),
+        "total_records": present + absent + late + excused,
+        "present": present,
+        "absent": absent,
+        "late": late,
+        "excused": excused,
+    }
+
+
+async def get_attendance_summary(teacher_id: str) -> dict:
+    db = get_database()
+    if db is None:
+        return {
+            "total_sessions": 0, "total_students": 0, "total_records": 0,
+            "present": 0, "absent": 0, "late": 0, "excused": 0, "attendance_percentage": 0.0,
+        }
+    total_sessions = await db.attendance_sessions.count_documents({"teacher_id": teacher_id})
+    total_students = await db.students.count_documents(
+        {"teacher_id": teacher_id, "is_active": True}
+    )
+
+    present = await db.attendance_records.count_documents(
+        {"teacher_id": teacher_id, "status": "present"}
+    )
+    late = await db.attendance_records.count_documents(
+        {"teacher_id": teacher_id, "status": "late"}
+    )
+    excused = await db.attendance_records.count_documents(
+        {"teacher_id": teacher_id, "status": "excused"}
+    )
+    absent = await db.attendance_records.count_documents(
+        {"teacher_id": teacher_id, "status": "absent"}
+    )
+    attended = present + late + excused
+    total_records = attended + absent
+    pct = round(attended / total_records * 100, 2) if total_records > 0 else 0.0
+
+    return {
+        "total_sessions": total_sessions,
+        "total_students": total_students,
+        "total_records": total_records,
+        "present": present,
+        "absent": absent,
+        "late": late,
+        "excused": excused,
+        "attendance_percentage": pct,
+    }
 
 
 async def get_student_details(student_id: str, teacher_id: str) -> dict:

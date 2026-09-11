@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "ollama"
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3"
+    LLM_TIMEOUT_SECONDS: float = 45.0
+
+    # Optional OpenAI-compatible endpoint (remote/cloud LLM). When the app is
+    # deployed on Render, local Ollama is unreachable — point these at a
+    # remotely reachable endpoint (e.g. a hosted Ollama proxy) and set
+    # LLM_PROVIDER=openai_compatible.
+    OPENAI_COMPATIBLE_BASE_URL: str = ""
+    OPENAI_COMPATIBLE_MODEL: str = ""
+    OPENAI_COMPATIBLE_API_KEY: str = ""
 
     DEMO_MODE: bool = False
     DEMO_TEACHER_EMAIL: str = "demo@attendvortex.local"

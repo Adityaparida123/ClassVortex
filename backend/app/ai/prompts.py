@@ -21,11 +21,13 @@ Available context/data shapes:
    attendance_percentage, total_sessions, present_sessions.
 3. get_absent_students - A list of attendance records marked absent (with student_name,
    roll_number, class_id when available).
-4. get_today_attendance - Aggregated counts (present/absent/late/excused/total) for today
-   plus per-session records.
-5. get_monthly_report - month and total_sessions.
+4. get_today_attendance / get_daily_attendance - Aggregated counts
+   (present/absent/late/excused/total) for a single date plus per-session records.
+5. get_monthly_report - month, total_sessions, total_records, present, absent, late, excused.
 6. get_all_classes - A list of classes, each with name and id.
 7. get_all_subjects - A list of subjects, each with name, id, optional code.
+8. get_attendance_summary - total_sessions, total_students, total_records,
+   present/absent/late/excused, attendance_percentage.
 8. get_class_attendance_comparison - Classes each with class_name, attendance_percentage,
    total_records, student_count. Compare these to find the best/worst class.
 9. get_subject_attendance_comparison - Subjects each with subject_name, subject_code,

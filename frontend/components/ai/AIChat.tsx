@@ -4,11 +4,23 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { animate } from "animejs";
 import { api, ApiError } from "@/lib/api";
 import Icon from "@/components/ui/Icon";
+import Markdown from "@/components/ai/Markdown";
 import { prefersReducedMotion } from "@/lib/utils";
 
-interface Message {
+interface ExportPayload {
+  format: string;
+  from_date?: string | null;
+  to_date?: string | null;
+  class_id?: string | null;
+  subject_id?: string | null;
+  row_count: number;
+  filename_hint?: string;
+}
+
+interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  export?: ExportPayload | null;
 }
 
 const SUGGESTIONS = [
@@ -19,10 +31,14 @@ const SUGGESTIONS = [
 ];
 
 export default function AIChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<{
+    state: "loading" | "online" | "offline";
+    label: string;
+  }>({ state: "loading", label: "Checking AI status…" });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,9 +47,42 @@ export default function AIChat() {
     }
   }, [messages, thinking]);
 
+  useEffect(() => {
+    let active = true;
+    api
+      .aiHealth()
+      .then((health) => {
+        if (!active) return;
+        if (health.available) {
+          const model = health.model ? ` · ${health.model}` : "";
+          setAiStatus({
+            state: "online",
+            label: `AI connected${model}`,
+          });
+        } else {
+          setAiStatus({
+            state: "offline",
+            label: health.reason || "AI service not connected",
+          });
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setAiStatus({
+          state: "offline",
+          label: "Could not reach AI status endpoint",
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const send = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content || thinking) return;
+    const last = messages[messages.length - 1];
+    if (last && last.role === "user" && last.content === content) return;
     setInput("");
     setError(null);
     setMessages((prev) => [...prev, { role: "user", content }]);
@@ -41,10 +90,20 @@ export default function AIChat() {
     try {
       const res = await api.chat(content);
       const reply = res?.answer || res?.message || "No response from the assistant.";
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      const data = res?.data as { export?: ExportPayload | null } | null;
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: reply, export: data?.export ?? null },
+      ]);
     } catch (e) {
       const err = e as ApiError;
-      setError(err.message || "AI assistant unavailable.");
+      if (err.status === 0) {
+        setError(
+          "Could not reach the AI service. Check your network or whether the AI service is configured, then try again."
+        );
+      } else {
+        setError(err.message || "AI assistant unavailable.");
+      }
     } finally {
       setThinking(false);
     }
@@ -55,6 +114,13 @@ export default function AIChat() {
     send();
   };
 
+  const statusDot =
+    aiStatus.state === "online"
+      ? "bg-green-400"
+      : aiStatus.state === "offline"
+        ? "bg-amber-400"
+        : "bg-[var(--text-faint)]";
+
   return (
     <div className="flex h-[calc(100vh-10rem)] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[rgba(10,10,20,0.5)]">
       {/* Header */}
@@ -62,9 +128,26 @@ export default function AIChat() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(124,106,255,0.18)] text-[var(--primary-2)]">
           <Icon name="spark" size={22} />
         </div>
-        <div>
-          <h1 className="text-base font-semibold">AttendVortex AI</h1>
-          <p className="text-xs text-[var(--text-faint)]">Ask anything about your attendance data</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="flex items-center gap-2 text-base font-semibold">
+            AttendVortex AI
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] ${
+                aiStatus.state === "online"
+                  ? "bg-[rgba(74,222,128,0.12)] text-green-300"
+                  : aiStatus.state === "offline"
+                    ? "bg-[rgba(251,191,36,0.12)] text-amber-300"
+                    : "bg-[rgba(255,255,255,0.06)] text-[var(--text-faint)]"
+              }`}
+              title={aiStatus.label}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+              {aiStatus.state === "online" ? "Online" : aiStatus.state === "offline" ? "Offline" : "…"}
+            </span>
+          </h1>
+          <p className="truncate text-xs text-[var(--text-faint)]">
+            {aiStatus.label} · Ask anything about your attendance data
+          </p>
         </div>
       </div>
 
@@ -87,16 +170,19 @@ export default function AIChat() {
         )}
 
         {messages.map((m, i) => (
-          <ChatBubble key={i} role={m.role} content={m.content} />
+          <ChatBubble key={i} message={m} onExport={downloadExport} />
         ))}
 
         {thinking && (
           <div className="flex items-end gap-2">
             <div className="rounded-2xl rounded-bl-md border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-4 py-3">
-              <div className="flex gap-1.5">
-                <span className="h-2 w-2 animate-pulse-soft rounded-full bg-[var(--primary-2)]" />
-                <span className="h-2 w-2 animate-pulse-soft rounded-full bg-[var(--primary)]" style={{ animationDelay: "0.2s" }} />
-                <span className="h-2 w-2 animate-pulse-soft rounded-full bg-[var(--primary-2)]" style={{ animationDelay: "0.4s" }} />
+              <div className="flex items-center gap-2.5">
+                <div className="flex gap-1.5">
+                  <span className="h-2 w-2 animate-pulse-soft rounded-full bg-[var(--primary-2)]" />
+                  <span className="h-2 w-2 animate-pulse-soft rounded-full bg-[var(--primary)]" style={{ animationDelay: "0.2s" }} />
+                  <span className="h-2 w-2 animate-pulse-soft rounded-full bg-[var(--primary-2)]" style={{ animationDelay: "0.4s" }} />
+                </div>
+                <span className="text-xs text-[var(--text-faint)]">Thinking…</span>
               </div>
             </div>
           </div>
@@ -114,7 +200,7 @@ export default function AIChat() {
         <div className="flex gap-2">
           <input
             className="input-base flex-1"
-            placeholder="Ask about attendance..."
+            placeholder="Ask about attendance or request an export (Excel/CSV)…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             aria-label="Message"
@@ -128,27 +214,98 @@ export default function AIChat() {
   );
 }
 
-function ChatBubble({ role, content }: Message) {
+async function downloadExport(payload: ExportPayload) {
+  const params = {
+    class_id: payload.class_id ?? undefined,
+    subject_id: payload.subject_id ?? undefined,
+    from_date: payload.from_date ?? undefined,
+    to_date: payload.to_date ?? undefined,
+  };
+  if (payload.format === "csv") {
+    return api.exportCSV(params);
+  }
+  return api.exportExcel(params);
+}
+
+function ChatBubble({
+  message,
+  onExport,
+}: {
+  message: ChatMessage;
+  onExport: (payload: ExportPayload) => Promise<boolean>;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (ref.current && !prefersReducedMotion()) {
       animate(ref.current, { opacity: [0, 1], translateY: [8, 0], duration: 300, ease: "outQuad" });
     }
   }, []);
-  const isUser = role === "user";
+  const isUser = message.role === "user";
+  const exportPayload = message.export;
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         ref={ref}
         style={{ opacity: 0 }}
-        className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm ${
+        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
           isUser
             ? "rounded-br-md bg-[linear-gradient(135deg,var(--primary),#5b4dff)] text-white"
             : "rounded-bl-md border border-[var(--border)] bg-[rgba(255,255,255,0.04)] text-[var(--text)]"
         }`}
       >
-        {content}
+        {isUser ? (
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        ) : (
+          <Markdown text={message.content} />
+        )}
+        {exportPayload && (
+          <DownloadButtons
+            format={exportPayload.format}
+            rowCount={exportPayload.row_count}
+            onDownload={() => onExport(exportPayload)}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function DownloadButtons({
+  format,
+  rowCount,
+  onDownload,
+}: {
+  format: string;
+  rowCount: number;
+  onDownload: () => Promise<boolean>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const label = format === "csv" ? "CSV" : "Excel";
+
+  const handle = async () => {
+    setSaving(true);
+    try {
+      await onDownload();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-[var(--border)] pt-3">
+      <p className="mb-2 text-[11px] text-[var(--text-faint)]">
+        {rowCount} record{rowCount === 1 ? "" : "s"} ready · generated securely by the server
+      </p>
+      <button
+        onClick={handle}
+        disabled={saving}
+        className="btn-primary !px-3 !py-1.5 !text-xs"
+        type="button"
+      >
+        <Icon name="download" size={14} />
+        {saving ? "Preparing…" : `Download ${label}`}
+      </button>
     </div>
   );
 }

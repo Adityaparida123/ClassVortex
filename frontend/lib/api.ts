@@ -194,6 +194,7 @@ async function request<T>(
     body?: unknown;
     auth?: boolean;
     headers?: Record<string, string>;
+    timeoutMs?: number;
   } = {}
 ): Promise<T> {
   const body = await requestRaw<{ success?: boolean; data?: T }>(path, options);
@@ -415,13 +416,25 @@ export const api = {
     request<ClassReport>(`/reports/class/${classId}`),
 
   // Exports
-  exportCSV: async (params: { class_id?: string; from_date?: string; to_date?: string } = {}): Promise<boolean> => {
+  exportCSV: async (params: {
+    class_id?: string;
+    subject_id?: string;
+    student_id?: string;
+    from_date?: string;
+    to_date?: string;
+  } = {}): Promise<boolean> => {
     const blob = await download(`/exports/attendance/csv${queryString(params)}`);
     if (!blob) return false;
     triggerDownload(blob, "attendance.csv");
     return true;
   },
-  exportExcel: async (params: { class_id?: string; from_date?: string; to_date?: string } = {}): Promise<boolean> => {
+  exportExcel: async (params: {
+    class_id?: string;
+    subject_id?: string;
+    student_id?: string;
+    from_date?: string;
+    to_date?: string;
+  } = {}): Promise<boolean> => {
     const blob = await download(`/exports/attendance/excel${queryString(params)}`);
     if (!blob) return false;
     triggerDownload(blob, "attendance.xlsx");
@@ -430,9 +443,26 @@ export const api = {
 
   // AI
   chat: (message: string) =>
-    request<{ answer?: string; message?: string; data?: unknown }>("/ai/chat", {
+    request<{
+      answer?: string;
+      message?: string;
+      data?: unknown;
+      tool_used?: string | null;
+      ai_unavailable?: boolean;
+    }>("/ai/chat", {
       method: "POST",
       body: { message },
+      timeoutMs: 70000,
+    }),
+  aiHealth: () =>
+    request<{
+      available: boolean;
+      provider: string;
+      model: string;
+      reason?: string | null;
+    }>("/ai/health", {
+      method: "GET",
+      auth: false,
     }),
 };
 

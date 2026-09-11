@@ -1,0 +1,6 @@
+{$LLM_DOMAIN} {
+    @noauth not header Authorization "Bearer {$OLLAMA_API_TOKEN}"
+    respond @noauth 401
+
+    reverse_proxy ollama:11434
+}

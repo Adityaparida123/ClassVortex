@@ -460,7 +460,7 @@ export const api = {
       provider: string;
       model: string;
       reason?: string | null;
-    }>("/ai/health", {
+    }>("/ai/status", {
       method: "GET",
       auth: false,
     }),

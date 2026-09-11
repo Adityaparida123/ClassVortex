@@ -475,6 +475,57 @@ async def test_timeout_returns_labeled_fallback_with_data(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_unavailable_ai_returns_labeled_fallback_with_data(client, monkeypatch):
+    async def fake_unavailable(messages):
+        return "AI service is currently unavailable."
+
+    monkeypatch.setattr(assistant_service.llm_client, "chat", fake_unavailable)
+
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "Show me today's attendance.")
+    assert data["tool_used"] == "get_today_attendance"
+    assert data["ai_unavailable"] is True
+    assert "temporarily unavailable" in data["answer"]
+    assert "data directly" in data["answer"]
+    assert data["data"]["total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_malformed_empty_ai_response_is_handled_safely(client, monkeypatch):
+    async def fake_empty(messages):
+        return ""
+
+    monkeypatch.setattr(assistant_service.llm_client, "chat", fake_empty)
+
+    headers = await _setup_teacher(client)
+    resp = await client.post(
+        "/api/v1/ai/chat",
+        json={"message": "Show me today's attendance."},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["data"]["tool_used"] == "get_today_attendance"
+
+
+@pytest.mark.asyncio
+async def test_how_many_students_absent_routes_to_absent_tool(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "How many students are absent?")
+    assert data["tool_used"] == "get_absent_students"
+    assert len(data["data"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_today_attendance_summary_routes_to_today_tool(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "Give me today's attendance summary.")
+    assert data["tool_used"] == "get_today_attendance"
+    assert data["data"]["total"] == 5
+
+
+@pytest.mark.asyncio
 async def test_export_intent_is_isolated_between_teachers(client):
     headers = await _setup_teacher(client)
 
@@ -524,6 +575,27 @@ async def test_health_endpoint_public_and_secret_free(client, monkeypatch):
     assert body["data"]["available"] is True
     assert "base_url" not in body["data"]
     assert "api_key" not in json.dumps(body).lower()
+
+
+@pytest.mark.asyncio
+async def test_status_endpoint_exists_on_both_paths(client, monkeypatch):
+    async def fake_health():
+        return {
+            "available": False,
+            "provider": "ollama",
+            "model": "llama3",
+            "reason": "OLLAMA_BASE_URL is not configured.",
+        }
+
+    monkeypatch.setattr(assistant_service.llm_client, "health", fake_health)
+
+    for path in ("/api/v1/ai/status", "/api/v1/ai/health"):
+        resp = await client.get(path)
+        assert resp.status_code == 200, path
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["available"] is False
+        assert body["data"]["reason"]
 
 
 @pytest.mark.asyncio

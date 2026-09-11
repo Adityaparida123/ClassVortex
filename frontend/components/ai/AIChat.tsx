@@ -81,7 +81,7 @@ export default function AIChat() {
         setError("Your session has expired. Please sign in again.");
       } else if (err.status === 404 || err.status === 405) {
         setError(
-          "The backend is up, but the AI chat endpoint is not deployed on this backend version. Redeploy the backend."
+          "This backend version doesn't include the AI endpoints yet. Please redeploy the backend, then try again."
         );
       } else {
         setError(err.message || "AI assistant unavailable.");
@@ -136,14 +136,14 @@ export default function AIChat() {
                     ? "bg-[rgba(251,191,36,0.12)] text-amber-300"
                     : "bg-[rgba(255,255,255,0.06)] text-[var(--text-faint)]"
               }`}
-              title={`${aiStatus.label} · click to re-check`}
+              title={`${aiStatus.detail || aiStatus.label} · click to re-check`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
               {aiStatus.state === "online" ? "Online" : aiStatus.state === "offline" ? "Offline" : "…"}
             </button>
           </h1>
           <p className="truncate text-xs text-[var(--text-faint)]">
-            {aiStatus.label} · Ask anything about your attendance data
+            {aiStatus.detail || aiStatus.label}
           </p>
         </div>
       </div>
@@ -214,39 +214,45 @@ export default function AIChat() {
 type AiStatus = {
   state: "loading" | "online" | "offline";
   label: string;
+  detail?: string;
 };
 
 async function checkAiHealth(): Promise<AiStatus> {
   try {
     const health = await api.aiHealth();
     if (health.available) {
-      const model = health.model ? ` · ${health.model}` : "";
-      return { state: "online", label: `AI connected${model}` };
+      const model = health.model ? health.model : "AI";
+      return {
+        state: "online",
+        label: "AI Online · Ask anything about your attendance data",
+        detail: model,
+      };
     }
     return {
       state: "offline",
-      label: health.reason || "AI service not connected",
+      label: "AI Offline · AI service is currently unavailable",
+      detail: health.reason || "AI service not connected",
     };
   } catch (e) {
     const err = e as ApiError;
     if (err.status === 0) {
       return {
         state: "offline",
-        label: "Backend unreachable · check network or restart Render",
+        label: "Backend unavailable · Please try again",
+        detail: "Could not reach the backend (network error or timeout).",
       };
     }
     if (err.status === 401) {
-      return { state: "offline", label: "Authentication expired · sign in again" };
-    }
-    if (err.status === 404 || err.status === 405) {
       return {
         state: "offline",
-        label: "Backend up, but AI status endpoint not deployed",
+        label: "Backend unavailable · Please sign in again",
+        detail: "Authentication failed while checking AI status.",
       };
     }
     return {
       state: "offline",
-      label: `Backend error (${err.status}) · check the backend logs`,
+      label: "Backend unavailable · Please try again",
+      detail: `Status request returned HTTP ${err.status}; the deployed backend may be an older version without the AI status endpoint. Redeploy the backend.`,
     };
   }
 }

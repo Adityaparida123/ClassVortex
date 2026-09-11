@@ -209,6 +209,11 @@ async def _route_tool(message: str, teacher_id: str) -> dict:
             "absentees list",
             "not present in class",
             "not in class",
+            "are absent",
+            "students are absent",
+            "students were absent",
+            "how many absent",
+            "absent in class",
         ],
     ):
         data = await tools.get_absent_students(teacher_id)
@@ -227,6 +232,9 @@ async def _route_tool(message: str, teacher_id: str) -> dict:
         message_lower,
         ["attendance summary", "attendance overview", "overall attendance", "summary of attendance", "give me the attendance summary"],
     ):
+        if "today" in message_lower:
+            data = await tools.get_today_attendance(teacher_id)
+            return {"tool_used": "get_today_attendance", "data": data}
         data = await tools.get_attendance_summary(teacher_id)
         return {"tool_used": "get_attendance_summary", "data": data}
 

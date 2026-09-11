@@ -45,10 +45,6 @@ export default function AIChat() {
     } catch (e) {
       const err = e as ApiError;
       setError(err.message || "AI assistant unavailable.");
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Sorry, I could not reach the assistant right now." },
-      ]);
     } finally {
       setThinking(false);
     }

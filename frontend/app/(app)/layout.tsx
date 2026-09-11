@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthContext } from "@/context/AuthContext";
 import AppShell from "@/components/layout/AppShell";
 import Loading from "@/components/ui/Loading";
+import VortexBackground from "@/components/background/VortexBackground";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { token, loading } = useAuthContext();
@@ -24,5 +25,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <div className="relative min-h-full">
+      <VortexBackground />
+      <div className="relative z-10">
+        <AppShell>{children}</AppShell>
+      </div>
+    </div>
+  );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { prefersReducedMotion } from "@/lib/utils";
+import { makeGlowTexture } from "@/lib/three/glowTexture";
 
 export interface Vortex3DTheme {
   status: string;
@@ -265,21 +266,6 @@ export default function AttendanceVortex3D({
 }
 
 /* ───────────────────────── helpers ───────────────────────── */
-
-function makeGlowTexture(): THREE.Texture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d")!;
-  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, "rgba(255,255,255,1)");
-  grad.addColorStop(0.4, "rgba(255,255,255,0.5)");
-  grad.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(canvas);
-  return tex;
-}
 
 function buildOrbitParticles(count: number, speedScale: number) {
   const positions = new Float32Array(count * 3);

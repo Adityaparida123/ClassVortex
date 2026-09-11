@@ -358,6 +358,107 @@ async def test_attendance_summary_routes_and_aggregates(client):
 
 
 @pytest.mark.asyncio
+async def test_class_attendance_by_name(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "What is the attendance of CSE?")
+    assert data["tool_used"] == "get_class_attendance_by_name"
+    assert data["data"]["class_name"] == "CSE"
+    assert data["data"]["attendance_percentage"] == 75.0
+
+
+@pytest.mark.asyncio
+async def test_subject_attendance_by_name(client):
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "What is the attendance of Data Structures?")
+    assert data["tool_used"] == "get_subject_attendance_by_name"
+    assert data["data"]["subject_name"] == "Data Structures"
+    assert data["data"]["attendance_percentage"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_export_phrase_9_slash_11_is_understood(client):
+    """The exact phrasing from the bug report must parse as an export intent,
+    not fall back to 'couldn't determine'."""
+    from app.ai.intents import detect_export
+
+    intent = detect_export("can you create the excel sheet of attendance of 9/11/2026")
+    assert intent is not None
+    assert intent.intent == "export_attendance"
+    assert intent.format == "xlsx"
+    # Indian convention: 9/11/2026 -> 9 November 2026
+    assert intent.date == "2026-11-09"
+
+    headers = await _setup_teacher(client)
+    data = await _chat(client, headers, "can you create the excel sheet of attendance of 9/11/2026")
+    assert data["tool_used"] == "export_attendance"
+    assert "couldn't determine" not in data["answer"]
+
+
+@pytest.mark.asyncio
+async def test_class_attendance_query_never_leaks_other_teacher(client):
+    headers = await _setup_teacher(client)
+
+    other_token = await _register_and_login(client, "Name Confusion", _next_email(), PASSWORD)
+    other_headers = _headers(other_token)
+    await _create_class(client, other_headers, "CSE")
+
+    data = await _chat(client, headers, "What is the attendance of CSE?")
+    assert data["tool_used"] == "get_class_attendance_by_name"
+    assert data["data"]["attendance_percentage"] == 75.0
+    # The same class name owned by another teacher must resolve to their empty
+    # CSE (0 records), not this teacher's data.
+    other_data = await _chat(client, other_headers, "What is the attendance of CSE?")
+    assert other_data["tool_used"] == "get_class_attendance_by_name"
+    assert other_data["data"]["total_records"] == 0
+
+
+@pytest.mark.asyncio
+async def test_demo_account_isolation_from_personal_teacher(client, monkeypatch):
+    from app.config import settings
+    from app.database import get_database
+
+    monkeypatch.setattr(settings, "DEMO_MODE", True)
+
+    headers = await _setup_teacher(client)
+
+    db = get_database()
+    demo_email = "demo@attendvortex.local"
+    existing = await db.users.find_one({"email": demo_email})
+    if existing is None:
+        result = await db.users.insert_one(
+            {
+                "name": "Demo Teacher",
+                "email": demo_email,
+                "password_hash": "demo",
+                "role": "teacher",
+                "is_active": True,
+            }
+        )
+        demo_id = str(result.inserted_id)
+        await db.classes.insert_one(
+            {
+                "name": "DEMO CLASS ONLY",
+                "semester": 1,
+                "section": "A",
+                "academic_year": "2026-27",
+                "teacher_id": demo_id,
+            }
+        )
+
+    demo_login = await client.post("/api/v1/auth/demo")
+    assert demo_login.status_code == 200, demo_login.text
+    demo_headers = _headers(demo_login.json()["data"]["access_token"])
+
+    demo_data = await _chat(client, demo_headers, "How many classes do I have?")
+    assert len(demo_data["data"]) == 1
+    assert demo_data["data"][0]["name"] == "DEMO CLASS ONLY"
+
+    personal_data = await _chat(client, headers, "How many classes do I have?")
+    assert len(personal_data["data"]) == 2
+    assert all(c["name"] != "DEMO CLASS ONLY" for c in personal_data["data"])
+
+
+@pytest.mark.asyncio
 async def test_timeout_returns_labeled_fallback_with_data(client, monkeypatch):
     async def fake_timeout(messages):
         return "AI request timed out. Please try again."

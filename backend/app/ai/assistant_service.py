@@ -409,6 +409,32 @@ async def _route_tool(message: str, teacher_id: str) -> dict:
             data = await tools.get_students_by_class_name(class_name, teacher_id)
             return {"tool_used": "get_class_students", "data": data}
 
+    # --- Attendance for a specific class/subject by name ---
+    # "What is the attendance of CSE Demo Class?" / "Show attendance for
+    # Data Structures?" Resolves an owned class or subject by name. Runs late
+    # so shared words ("attendance for today") never steal a date query, which
+    # the date branch above already handled.
+    if _contains_query(
+        message_lower,
+        [
+            "attendance of ",
+            "attendance for ",
+            "attendance in ",
+            "attendance percentage of ",
+            "attendance percentage for ",
+        ],
+    ):
+        class_name = await _extract_class_name(message, teacher_id)
+        if class_name is not None:
+            data = await tools.get_class_attendance_by_name(class_name, teacher_id)
+            if data:
+                return {"tool_used": "get_class_attendance_by_name", "data": data}
+        subject_name = await _extract_subject_name(message, teacher_id)
+        if subject_name is not None:
+            data = await tools.get_subject_attendance_by_name(subject_name, teacher_id)
+            if data:
+                return {"tool_used": "get_subject_attendance_by_name", "data": data}
+
     return {"tool_used": None, "data": None}
 
 
@@ -425,6 +451,25 @@ async def _extract_class_name(message: str, teacher_id: str):
     best = None
     for cls in classes:
         name = cls.get("name", "")
+        if name and name.lower() in message_lower:
+            if best is None or len(name) > len(best):
+                best = name
+    return best
+
+
+async def _extract_subject_name(message: str, teacher_id: str):
+    """Return an owned subject name if it appears in the message, else None."""
+    try:
+        subjects = await tools.get_all_subjects(teacher_id)
+    except Exception:
+        return None
+    if not subjects:
+        return None
+
+    message_lower = message.lower()
+    best = None
+    for subj in subjects:
+        name = subj.get("name", "")
         if name and name.lower() in message_lower:
             if best is None or len(name) > len(best):
                 best = name
@@ -489,6 +534,21 @@ async def _fallback_tool_message(tool_used, data) -> str:
             f"({data.get('present', 0)} present, {data.get('absent', 0)} absent, "
             f"{data.get('late', 0)} late, {data.get('excused', 0)} excused). "
             f"Overall attendance is **{data.get('attendance_percentage', 0)}%**."
+        )
+    if tool_used == "get_class_attendance_by_name":
+        if not data:
+            return "I couldn't find that class."
+        return (
+            f"**{data.get('class_name', '')}**: **{data.get('attendance_percentage', 0)}%** attendance "
+            f"({data.get('total_records', 0)} records, {data.get('student_count', 0)} students)."
+        )
+    if tool_used == "get_subject_attendance_by_name":
+        if not data:
+            return "I couldn't find that subject."
+        return (
+            f"**{data.get('subject_name', '')}**"
+            f"{(' (' + data.get('class_name', '') + ')') if data.get('class_name') else ''}: "
+            f"**{data.get('attendance_percentage', 0)}%** attendance ({data.get('total_records', 0)} records)."
         )
     if tool_used == "get_all_classes":
         if not data:

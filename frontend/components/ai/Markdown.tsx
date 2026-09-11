@@ -1,37 +1,42 @@
 import React from "react";
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
+/**
+ * Minimal Markdown renderer for AI answers.
+ *
+ * Supported: bold (**text**), bullet lines (- / •, ordered 1.), and paragraph
+ * blocks. Everything is rendered through React text nodes, which React escapes
+ * natively (`<`, `>`, `&`) — the same mechanism that keeps JSX safe. We must
+ * NOT manually HTML-escape the content: React does not decode entities inside
+ * text nodes, so pre-escaping would surface literal `&#39;` / `&quot;` to the
+ * user (the exact bug this replaces).
+ */
 function renderInline(raw: string): React.ReactNode[] {
   const tokens: React.ReactNode[] = [];
   const regex = /(\*\*[^*]+\*\*)/g;
   const parts = raw.split(regex);
   parts.forEach((part, i) => {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      tokens.push(
-        <strong key={i}>{escapeHtml(part.slice(2, -2))}</strong>
-      );
+      tokens.push(<strong key={i}>{part.slice(2, -2)}</strong>);
     } else if (part.trim()) {
-      tokens.push(<React.Fragment key={i}>{escapeHtml(part)}</React.Fragment>);
+      tokens.push(<React.Fragment key={i}>{part}</React.Fragment>);
     }
   });
   return tokens;
 }
 
-/**
- * Minimal, safe Markdown renderer for AI answers.
- *
- * Supported: bold (**text**), bullet lists (- / • lines), and blank-line
- * separated paragraphs. All HTML in the AI output is escaped so the AI can
- * never inject markup.
- */
+function renderParagraph(lines: string[]): React.ReactNode {
+  return (
+    <p className="whitespace-pre-wrap break-words">
+      {lines.map((line, li) => (
+        <React.Fragment key={li}>
+          {renderInline(line)}
+          {li < lines.length - 1 ? <br /> : null}
+        </React.Fragment>
+      ))}
+    </p>
+  );
+}
+
 export default function Markdown({ text }: { text: string }) {
   const blocks = text.split(/\n{2,}/).filter((b) => b.trim().length > 0);
 
@@ -55,16 +60,7 @@ export default function Markdown({ text }: { text: string }) {
             </ul>
           );
         }
-        return (
-          <p key={blockIndex} className="whitespace-pre-wrap break-words">
-            {lines.map((line, li) => (
-              <React.Fragment key={li}>
-                {renderInline(line)}
-                {li < lines.length - 1 ? <br /> : null}
-              </React.Fragment>
-            ))}
-          </p>
-        );
+        return renderParagraph(lines);
       })}
     </div>
   );

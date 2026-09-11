@@ -394,6 +394,54 @@ async def get_subject_attendance_comparison(teacher_id: str) -> list:
     return results
 
 
+async def get_class_attendance_by_name(class_name: str, teacher_id: str) -> dict:
+    """Attendance summary for a single authenticated class, by exact name."""
+    db = get_database()
+    if db is None:
+        return {}
+    cls = await db.classes.find_one({"name": class_name, "teacher_id": teacher_id})
+    if not cls:
+        return {}
+    cid = str(cls["_id"])
+    comparison = await get_class_attendance_comparison(teacher_id)
+    row = next((c for c in comparison if c["class_id"] == cid), None)
+    if row is None:
+        row = {
+            "class_id": cid,
+            "class_name": cls.get("name", class_name),
+            "attendance_percentage": 0.0,
+            "total_records": 0,
+            "student_count": 0,
+        }
+    return row
+
+
+async def get_subject_attendance_by_name(subject_name: str, teacher_id: str) -> dict:
+    """Attendance summary for a single authenticated subject, by exact name."""
+    db = get_database()
+    if db is None:
+        return {}
+    subj = await db.subjects.find_one(
+        {"name": subject_name, "teacher_id": teacher_id, "is_active": {"$ne": False}}
+    )
+    if not subj:
+        return {}
+    sid = str(subj["_id"])
+    comparison = await get_subject_attendance_comparison(teacher_id)
+    row = next((s for s in comparison if s["subject_id"] == sid), None)
+    if row is None:
+        row = {
+            "subject_id": sid,
+            "subject_name": subj.get("name", subject_name),
+            "subject_code": subj.get("code", "") or subj.get("subject_code", ""),
+            "class_id": str(subj.get("class_id") or ""),
+            "class_name": "",
+            "attendance_percentage": 0.0,
+            "total_records": 0,
+        }
+    return row
+
+
 async def get_class_students(class_id: str, teacher_id: str) -> dict:
     db = get_database()
     if db is None:

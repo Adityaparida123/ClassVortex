@@ -28,6 +28,9 @@ Available context/data shapes:
 7. get_all_subjects - A list of subjects, each with name, id, optional code.
 8. get_attendance_summary - total_sessions, total_students, total_records,
    present/absent/late/excused, attendance_percentage.
+A. get_class_attendance_by_name / get_subject_attendance_by_name - A single
+   owned class or subject with attendance_percentage, total_records,
+   student_count (classes) or class_name (subjects).
 8. get_class_attendance_comparison - Classes each with class_name, attendance_percentage,
    total_records, student_count. Compare these to find the best/worst class.
 9. get_subject_attendance_comparison - Subjects each with subject_name, subject_code,

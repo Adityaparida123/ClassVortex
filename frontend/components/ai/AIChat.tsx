@@ -35,10 +35,7 @@ export default function AIChat() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aiStatus, setAiStatus] = useState<{
-    state: "loading" | "online" | "offline";
-    label: string;
-  }>({ state: "loading", label: "Checking AI status…" });
+  const [aiStatus, setAiStatus] = useState<AiStatus>({ state: "loading", label: "Checking AI status…" });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,30 +46,9 @@ export default function AIChat() {
 
   useEffect(() => {
     let active = true;
-    api
-      .aiHealth()
-      .then((health) => {
-        if (!active) return;
-        if (health.available) {
-          const model = health.model ? ` · ${health.model}` : "";
-          setAiStatus({
-            state: "online",
-            label: `AI connected${model}`,
-          });
-        } else {
-          setAiStatus({
-            state: "offline",
-            label: health.reason || "AI service not connected",
-          });
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        setAiStatus({
-          state: "offline",
-          label: "Could not reach AI status endpoint",
-        });
-      });
+    checkAiHealth().then((status) => {
+      if (active) setAiStatus(status);
+    });
     return () => {
       active = false;
     };
@@ -99,7 +75,13 @@ export default function AIChat() {
       const err = e as ApiError;
       if (err.status === 0) {
         setError(
-          "Could not reach the AI service. Check your network or whether the AI service is configured, then try again."
+          "Could not reach the backend. Check your network, or wait for Render to wake up, then try again."
+        );
+      } else if (err.status === 401) {
+        setError("Your session has expired. Please sign in again.");
+      } else if (err.status === 404 || err.status === 405) {
+        setError(
+          "The backend is up, but the AI chat endpoint is not deployed on this backend version. Redeploy the backend."
         );
       } else {
         setError(err.message || "AI assistant unavailable.");
@@ -112,6 +94,18 @@ export default function AIChat() {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     send();
+  };
+
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const refreshStatus = async () => {
+    if (checkingStatus) return;
+    setCheckingStatus(true);
+    setAiStatus({ state: "loading", label: "Checking AI status…" });
+    try {
+      setAiStatus(await checkAiHealth());
+    } finally {
+      setCheckingStatus(false);
+    }
   };
 
   const statusDot =
@@ -131,19 +125,22 @@ export default function AIChat() {
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-base font-semibold">
             AttendVortex AI
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] ${
+            <button
+              onClick={refreshStatus}
+              disabled={checkingStatus}
+              type="button"
+              className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] transition-opacity hover:opacity-80 ${
                 aiStatus.state === "online"
                   ? "bg-[rgba(74,222,128,0.12)] text-green-300"
                   : aiStatus.state === "offline"
                     ? "bg-[rgba(251,191,36,0.12)] text-amber-300"
                     : "bg-[rgba(255,255,255,0.06)] text-[var(--text-faint)]"
               }`}
-              title={aiStatus.label}
+              title={`${aiStatus.label} · click to re-check`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
               {aiStatus.state === "online" ? "Online" : aiStatus.state === "offline" ? "Offline" : "…"}
-            </span>
+            </button>
           </h1>
           <p className="truncate text-xs text-[var(--text-faint)]">
             {aiStatus.label} · Ask anything about your attendance data
@@ -212,6 +209,46 @@ export default function AIChat() {
       </form>
     </div>
   );
+}
+
+type AiStatus = {
+  state: "loading" | "online" | "offline";
+  label: string;
+};
+
+async function checkAiHealth(): Promise<AiStatus> {
+  try {
+    const health = await api.aiHealth();
+    if (health.available) {
+      const model = health.model ? ` · ${health.model}` : "";
+      return { state: "online", label: `AI connected${model}` };
+    }
+    return {
+      state: "offline",
+      label: health.reason || "AI service not connected",
+    };
+  } catch (e) {
+    const err = e as ApiError;
+    if (err.status === 0) {
+      return {
+        state: "offline",
+        label: "Backend unreachable · check network or restart Render",
+      };
+    }
+    if (err.status === 401) {
+      return { state: "offline", label: "Authentication expired · sign in again" };
+    }
+    if (err.status === 404 || err.status === 405) {
+      return {
+        state: "offline",
+        label: "Backend up, but AI status endpoint not deployed",
+      };
+    }
+    return {
+      state: "offline",
+      label: `Backend error (${err.status}) · check the backend logs`,
+    };
+  }
 }
 
 async function downloadExport(payload: ExportPayload) {

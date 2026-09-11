@@ -6,6 +6,15 @@ from app.core.dependencies import get_current_user
 router = APIRouter(prefix="/api/v1/reports", tags=["Reports"])
 
 
+@router.get("/dashboard", response_model=dict)
+async def dashboard_summary(
+    current_user: dict = Depends(get_current_user),
+):
+    """Teacher-scoped control-center summary for the dashboard."""
+    report = await report_service.get_dashboard_summary(str(current_user["_id"]))
+    return {"success": True, "data": report}
+
+
 @router.get("/daily", response_model=dict)
 async def daily_report(
     class_id: Optional[str] = None,

@@ -684,6 +684,9 @@ async def test_status_reports_invalid_configured_model(client, monkeypatch):
             return _Resp()
 
     monkeypatch.setattr(llm_client_module, "_new_async_client", lambda timeout: _WrongModelClient())
+    monkeypatch.setattr(llm_client_module.llm_client, "provider", "ollama")
+    monkeypatch.setattr(llm_client_module.llm_client, "base_url", "http://ollama.test")
+    monkeypatch.setattr(llm_client_module.llm_client, "model", "llama3")
     status = await llm_client_module.llm_client.health()
     assert status["available"] is False
     assert "not found" in status["reason"]
@@ -736,6 +739,9 @@ async def test_status_sends_bearer_token_when_ollama_api_key_set(client, monkeyp
 
     fake = _AuthCapturingClient()
     monkeypatch.setattr(llm_client_module, "_new_async_client", lambda timeout: fake)
+    monkeypatch.setattr(llm_client_module.llm_client, "provider", "ollama")
+    monkeypatch.setattr(llm_client_module.llm_client, "base_url", "http://ollama.test")
+    monkeypatch.setattr(llm_client_module.llm_client, "model", "llama3")
     monkeypatch.setattr(llm_client_module.llm_client, "ollama_api_key", "test-token")
     status = await llm_client_module.llm_client.health()
     assert status["available"] is True

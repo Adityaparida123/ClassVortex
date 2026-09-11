@@ -4,6 +4,8 @@ export interface DailyReport {
   total_present: number;
   total_absent: number;
   total_records: number;
+  total_late?: number;
+  total_excused?: number;
 }
 
 export interface StudentSummaryRow {
@@ -42,6 +44,54 @@ export interface ClassReport {
     student_name: string;
     roll_number: string;
   })[];
+}
+
+export interface DashboardSessionRow {
+  session_id: string;
+  class_id: string;
+  class_name: string;
+  subject_id: string;
+  subject_name: string;
+  date: string;
+  start_time: string;
+}
+
+export interface AttentionStudentRow {
+  student_id: string;
+  name: string;
+  roll_number: string;
+  attendance_percentage: number;
+}
+
+export interface AttentionClassRow {
+  class_id: string;
+  name: string;
+  attendance_percentage: number;
+}
+
+export interface AttentionSubjectRow {
+  subject_id: string;
+  name: string;
+  attendance_percentage: number;
+}
+
+export interface DashboardSummary {
+  totals: { students: number; classes: number; subjects: number };
+  today: {
+    date: string;
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+    records: number;
+  };
+  overall_percentage: number;
+  recent_sessions: DashboardSessionRow[];
+  attention: {
+    students: AttentionStudentRow[];
+    classes: AttentionClassRow[];
+    subjects: AttentionSubjectRow[];
+  };
 }
 
 import type { AttendanceSession } from "./attendance";

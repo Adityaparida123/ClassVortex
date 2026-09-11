@@ -30,6 +30,7 @@ import type {
   MonthlyReport,
   StudentReport,
   ClassReport,
+  DashboardSummary,
 } from "@/types/report";
 
 function getBaseUrl(): string {
@@ -396,6 +397,7 @@ export const api = {
     request<StudentSummary>(`/attendance/student/${studentId}/summary`),
 
   // Reports
+  getDashboard: () => request<DashboardSummary>("/reports/dashboard"),
   getDailyReport: (params: { class_id?: string; date?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.class_id) q.set("class_id", params.class_id);

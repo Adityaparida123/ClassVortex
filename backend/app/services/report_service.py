@@ -5,6 +5,148 @@ from app.database import get_database
 from app.utils.helpers import serialize_id
 
 
+async def get_dashboard_summary(teacher_id: str, limit: int = 6) -> dict:
+    """Aggregated, teacher-scoped data for the dashboard control center.
+
+    Every query is filtered by the authenticated teacher, so no one can see
+    another user's students/classes/subjects/attendance. Safe defaults are
+    returned when the account has no data yet.
+    """
+    db = get_database()
+    today = datetime.now().strftime("%Y-%m-%d")
+    month = datetime.now().strftime("%Y-%m")
+
+    total_students = await db.students.count_documents(
+        {"teacher_id": teacher_id, "is_active": True}
+    )
+    total_classes = await db.classes.count_documents({"teacher_id": teacher_id})
+    total_subjects = await db.subjects.count_documents({"teacher_id": teacher_id})
+
+    daily = await get_daily_report(teacher_id, date=today)
+    monthly = await get_monthly_report(teacher_id, month=month)
+
+    overall_pct = 0.0
+    summaries = monthly.get("student_summaries") or []
+    if summaries:
+        overall_pct = (
+            sum(s["attendance_percentage"] for s in summaries) / len(summaries)
+        )
+
+    class_name = {}
+    async for cls in db.classes.find({"teacher_id": teacher_id}):
+        class_name[str(cls["_id"])] = cls["name"]
+    subject_name = {}
+    async for subject in db.subjects.find({"teacher_id": teacher_id}):
+        subject_name[str(subject["_id"])] = subject["name"]
+
+    recent_sessions = []
+    async for session in db.attendance_sessions.find(
+        {"teacher_id": teacher_id}
+    ).sort([("date", -1), ("start_time", -1)]).limit(limit):
+        recent_sessions.append({
+            "session_id": str(session["_id"]),
+            "class_id": str(session["class_id"]),
+            "class_name": class_name.get(str(session["class_id"]), "Unknown class"),
+            "subject_id": str(session["subject_id"]),
+            "subject_name": subject_name.get(str(session["subject_id"]), "Unknown subject"),
+            "date": session["date"],
+            "start_time": session.get("start_time") or "",
+        })
+
+    attention_students = []
+    if summaries:
+        student_names = {}
+        async for student in db.students.find(
+            {"teacher_id": teacher_id, "is_active": True},
+            {"name": 1, "roll_number": 1},
+        ):
+            student_names[str(student["_id"])] = {
+                "name": student["name"],
+                "roll_number": student.get("roll_number") or "",
+            }
+        below = [
+            s for s in summaries
+            if s["attendance_percentage"] < 75.0 and str(s["student_id"]) in student_names
+        ]
+        below.sort(key=lambda s: s["attendance_percentage"])
+        for s in below[:limit]:
+            info = student_names[str(s["student_id"])]
+            attention_students.append({
+                "student_id": str(s["student_id"]),
+                "name": info["name"],
+                "roll_number": info["roll_number"],
+                "attendance_percentage": s["attendance_percentage"],
+            })
+
+    attention_classes = []
+    async for cls in db.classes.find({"teacher_id": teacher_id}):
+        report = await get_class_report(teacher_id, str(cls["_id"]))
+        if not report:
+            continue
+        rows = report.get("student_summaries") or []
+        if not rows:
+            continue
+        avg = sum(s["attendance_percentage"] for s in rows) / len(rows)
+        if avg < 75.0:
+            attention_classes.append({
+                "class_id": str(cls["_id"]),
+                "name": cls["name"],
+                "attendance_percentage": round(avg, 2),
+            })
+    attention_classes.sort(key=lambda c: c["attendance_percentage"])
+
+    attention_subjects = []
+    subject_ids = await db.attendance_sessions.distinct(
+        "subject_id", {"teacher_id": teacher_id}
+    )
+    for sid in subject_ids:
+        sessions_cursor = db.attendance_sessions.find(
+            {"teacher_id": teacher_id, "subject_id": sid}, {"_id": 1}
+        )
+        session_ids = [str(s["_id"]) async for s in sessions_cursor]
+        if not session_ids:
+            continue
+        present = await db.attendance_records.count_documents(
+            {"session_id": {"$in": session_ids}, "teacher_id": teacher_id, "status": "present"}
+        )
+        total = await db.attendance_records.count_documents(
+            {"session_id": {"$in": session_ids}, "teacher_id": teacher_id}
+        )
+        if total == 0:
+            continue
+        pct = (present / total) * 100
+        if pct < 75.0:
+            attention_subjects.append({
+                "subject_id": sid,
+                "name": subject_name.get(sid, "Unknown subject"),
+                "attendance_percentage": round(pct, 2),
+            })
+    attention_subjects.sort(key=lambda s: s["attendance_percentage"])
+
+    return {
+        "totals": {
+            "students": total_students,
+            "classes": total_classes,
+            "subjects": total_subjects,
+        },
+        "today": {
+            "date": daily["date"],
+            "present": daily["total_present"],
+            "absent": daily["total_absent"],
+            "late": daily["total_late"],
+            "excused": daily["total_excused"],
+            "records": daily["total_records"],
+        },
+        "overall_percentage": round(overall_pct, 2),
+        "recent_sessions": recent_sessions,
+        "attention": {
+            "students": attention_students,
+            "classes": attention_classes,
+            "subjects": attention_subjects,
+        },
+    }
+
+
 async def get_daily_report(teacher_id: str, class_id: Optional[str] = None, date: Optional[str] = None) -> dict:
     db = get_database()
     if not date:
@@ -20,7 +162,15 @@ async def get_daily_report(teacher_id: str, class_id: Optional[str] = None, date
 
     session_ids = [s["id"] for s in sessions]
     if not session_ids:
-        return {"date": date, "sessions": [], "total_present": 0, "total_absent": 0}
+        return {
+            "date": date,
+            "sessions": [],
+            "total_present": 0,
+            "total_absent": 0,
+            "total_late": 0,
+            "total_excused": 0,
+            "total_records": 0,
+        }
 
     records = []
     async for record in db.attendance_records.find(
@@ -30,12 +180,16 @@ async def get_daily_report(teacher_id: str, class_id: Optional[str] = None, date
 
     total_present = sum(1 for r in records if r["status"] == "present")
     total_absent = sum(1 for r in records if r["status"] == "absent")
+    total_late = sum(1 for r in records if r["status"] == "late")
+    total_excused = sum(1 for r in records if r["status"] == "excused")
 
     return {
         "date": date,
         "sessions": sessions,
         "total_present": total_present,
         "total_absent": total_absent,
+        "total_late": total_late,
+        "total_excused": total_excused,
         "total_records": len(records),
     }
 

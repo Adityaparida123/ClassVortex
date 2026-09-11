@@ -75,6 +75,11 @@ class LLMClient:
                     resp = await client.get(f"{self.openai_base_url}/models", headers=headers)
 
                 if resp.status_code != 200:
+                    logger.warning(
+                        "LLM health check (provider=%s) failed with HTTP %s",
+                        self.provider,
+                        resp.status_code,
+                    )
                     return {
                         "available": False,
                         "provider": self.provider,
@@ -92,6 +97,11 @@ class LLMClient:
                         self.model == name or self.model in name or name.startswith(self.model)
                         for name in models
                     ):
+                        logger.warning(
+                            "LLM health check (provider=%s): model '%s' not found in installed models",
+                            self.provider,
+                            self.model,
+                        )
                         return {
                             "available": False,
                             "provider": self.provider,
@@ -108,6 +118,7 @@ class LLMClient:
                     "reason": None,
                 }
         except httpx.TimeoutException:
+            logger.warning("LLM health check (provider=%s) timed out", self.provider)
             return {
                 "available": False,
                 "provider": self.provider,

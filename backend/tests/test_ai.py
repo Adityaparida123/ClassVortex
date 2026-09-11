@@ -663,6 +663,64 @@ async def test_status_message_when_llm_reachable(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_status_reports_invalid_configured_model(client, monkeypatch):
+    class _WrongModelClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            class _Resp:
+                status_code = 200
+
+                def json(self):
+                    return {"models": [{"name": "deepseek-r1"}]}
+
+            return _Resp()
+
+    monkeypatch.setattr(llm_client_module, "_new_async_client", lambda timeout: _WrongModelClient())
+    status = await llm_client_module.llm_client.health()
+    assert status["available"] is False
+    assert "not found" in status["reason"]
+    assert status["message"] == llm_client_module.USER_FRIENDLY_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_status_handles_llm_timeout_gracefully(client, monkeypatch):
+    class _TimeoutClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            raise httpx.TimeoutException("timed out")
+
+    monkeypatch.setattr(llm_client_module, "_new_async_client", lambda timeout: _TimeoutClient())
+    status = await llm_client_module.llm_client.health()
+    assert status["available"] is False
+    assert "timed out" in status["message"].lower() or status["message"] == llm_client_module.USER_FRIENDLY_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_status_reports_unsupported_provider(client, monkeypatch):
+    monkeypatch.setattr(llm_client_module.llm_client, "provider", "not_a_provider")
+    monkeypatch.setattr(llm_client_module.llm_client, "_config_reason", lambda: "LLM_PROVIDER 'not_a_provider' is not supported.")
+    status = await llm_client_module.llm_client.health()
+    assert status["available"] is False
+    assert "not supported" in status["reason"]
+
+
+@pytest.mark.asyncio
 async def test_health_reflects_missing_config(client, monkeypatch):
     async def fake_health():
         return {

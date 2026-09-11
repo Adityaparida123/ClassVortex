@@ -1,8 +1,18 @@
+import logging
 import httpx
 from app.config import settings
 
+logger = logging.getLogger("attendvortex.ai")
+
 AI_UNAVAILABLE_MESSAGE = "AI service is currently unavailable."
 AI_TIMEOUT_MESSAGE = "AI request timed out. Please try again."
+USER_FRIENDLY_UNAVAILABLE = "The AI service is currently unavailable. Please try again later."
+USER_FRIENDLY_AVAILABLE = "LLM service is reachable"
+
+
+def _new_async_client(timeout: float) -> httpx.AsyncClient:
+    """Testable seam around httpx.AsyncClient construction."""
+    return httpx.AsyncClient(timeout=timeout)
 
 
 class LLMClient:
@@ -39,17 +49,23 @@ class LLMClient:
         return self.openai_model if self.provider == "openai_compatible" else self.model
 
     async def health(self) -> dict:
-        """Lightweight connectivity check. Never exposes URLs, keys, or secrets."""
+        """Lightweight connectivity check.
+
+        Never crashes when the LLM is down and never exposes URLs, keys, or
+        secrets. The `message` field is always user-friendly; the `reason`
+        field carries technical detail and is server-side only.
+        """
         reason = self._config_reason()
         if reason:
             return {
                 "available": False,
                 "provider": self.provider,
                 "model": self.display_model,
+                "message": USER_FRIENDLY_UNAVAILABLE,
                 "reason": reason,
             }
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with _new_async_client(timeout=5.0) as client:
                 if self.provider == "ollama":
                     resp = await client.get(f"{self.base_url}/api/tags")
                 else:
@@ -63,6 +79,7 @@ class LLMClient:
                         "available": False,
                         "provider": self.provider,
                         "model": self.display_model,
+                        "message": USER_FRIENDLY_UNAVAILABLE,
                         "reason": f"{self.provider} endpoint returned HTTP {resp.status_code}.",
                     }
 
@@ -79,6 +96,7 @@ class LLMClient:
                             "available": False,
                             "provider": self.provider,
                             "model": self.display_model,
+                            "message": USER_FRIENDLY_UNAVAILABLE,
                             "reason": f"Configured model '{self.model}' was not found on the Ollama server.",
                         }
 
@@ -86,6 +104,7 @@ class LLMClient:
                     "available": True,
                     "provider": self.provider,
                     "model": self.display_model,
+                    "message": USER_FRIENDLY_AVAILABLE,
                     "reason": None,
                 }
         except httpx.TimeoutException:
@@ -93,24 +112,29 @@ class LLMClient:
                 "available": False,
                 "provider": self.provider,
                 "model": self.display_model,
+                "message": USER_FRIENDLY_UNAVAILABLE,
                 "reason": "Timed out while connecting to the LLM service.",
             }
         except Exception as e:
+            technical = f"Could not reach the LLM service: {e.__class__.__name__}."
+            logger.warning("LLM health check failed (provider=%s): %s", self.provider, technical)
             return {
                 "available": False,
                 "provider": self.provider,
                 "model": self.display_model,
-                "reason": f"Could not reach the LLM service: {e.__class__.__name__}.",
+                "message": USER_FRIENDLY_UNAVAILABLE,
+                "reason": technical,
             }
 
     async def chat(self, messages: list) -> str:
         reason = self._config_reason()
         if reason:
+            logger.warning("LLM chat skipped (provider=%s): %s", self.provider, reason)
             return AI_UNAVAILABLE_MESSAGE
 
         try:
             timeout = settings.LLM_TIMEOUT_SECONDS
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with _new_async_client(timeout=timeout) as client:
                 if self.provider == "ollama":
                     response = await client.post(
                         f"{self.base_url}/api/chat",
@@ -147,8 +171,12 @@ class LLMClient:
                     return content or AI_UNAVAILABLE_MESSAGE
                 return AI_UNAVAILABLE_MESSAGE
         except httpx.TimeoutException:
+            logger.warning("LLM chat timed out (provider=%s)", self.provider)
             return AI_TIMEOUT_MESSAGE
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "LLM chat failed (provider=%s): %s", self.provider, e.__class__.__name__
+            )
             return AI_UNAVAILABLE_MESSAGE
 
 

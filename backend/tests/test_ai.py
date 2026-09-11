@@ -1,8 +1,10 @@
 import pytest
 import json
+import httpx
 from datetime import datetime, timezone
 
 import app.ai.assistant_service as assistant_service
+import app.ai.llm_client as llm_client_module
 
 
 EMAIL_INDEX = {"n": 0}
@@ -596,6 +598,68 @@ async def test_status_endpoint_exists_on_both_paths(client, monkeypatch):
         assert body["success"] is True
         assert body["data"]["available"] is False
         assert body["data"]["reason"]
+
+
+class _RaisingAsyncClient:
+    """Fake httpx client that fails to connect, simulating an unreachable LLM."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, *args, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    async def post(self, *args, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+
+@pytest.mark.asyncio
+async def test_status_message_is_user_friendly_when_llm_unreachable(client, monkeypatch):
+    """A raw ConnectError must never reach the end user in the message field."""
+    monkeypatch.setattr(
+        llm_client_module, "_new_async_client", lambda timeout: _RaisingAsyncClient()
+    )
+    status = await llm_client_module.llm_client.health()
+    assert status["available"] is False
+    assert status["message"] == llm_client_module.USER_FRIENDLY_UNAVAILABLE
+    assert "ConnectError" not in status["message"]
+    assert "ConnectError" in status["reason"]
+
+
+@pytest.mark.asyncio
+async def test_status_message_when_llm_reachable(client, monkeypatch):
+    class _OkClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, *args, **kwargs):
+            class _Resp:
+                status_code = 200
+
+                def json(self):
+                    return {"models": [{"name": "llama3"}]}
+
+            return _Resp()
+
+        async def post(self, *args, **kwargs):
+            raise AssertionError("post should not be called for health")
+
+    monkeypatch.setattr(llm_client_module, "_new_async_client", lambda timeout: _OkClient())
+    status = await llm_client_module.llm_client.health()
+    assert status["available"] is True
+    assert status["message"] == llm_client_module.USER_FRIENDLY_AVAILABLE
 
 
 @pytest.mark.asyncio

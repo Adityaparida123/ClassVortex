@@ -231,7 +231,7 @@ async function checkAiHealth(): Promise<AiStatus> {
     return {
       state: "offline",
       label: "AI Offline · AI service is currently unavailable",
-      detail: health.reason || "AI service not connected",
+      detail: health.message || "AI service is currently unavailable",
     };
   } catch (e) {
     const err = e as ApiError;

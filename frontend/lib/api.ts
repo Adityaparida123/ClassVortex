@@ -459,6 +459,7 @@ export const api = {
       available: boolean;
       provider: string;
       model: string;
+      message?: string | null;
       reason?: string | null;
     }>("/ai/status", {
       method: "GET",
